@@ -1,0 +1,154 @@
+spring:
+  application:
+    name: ecommerce
+
+  profiles:
+    active: local  # 기본 프로파일 (local: H2, dev: MySQL, inmemory: 인메모리)
+
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# Repository 타입 설정 (기본값: jpa)
+# - jpa: Spring Data JPA 사용 (H2/MySQL)
+# - inmemory: HashMap 기반 인메모리 Repository 사용
+repository:
+  type: jpa
+
+springdoc:
+  api-docs:
+    path: /api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    doc-expansion: none
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+  packages-to-scan: com.hhplus.ecommerce
+  paths-to-match: /api/v1/**
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
+logging:
+  level:
+    com.hhplus.ecommerce: debug
+
+---
+# Local 환경 (H2 인메모리 DB)
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:h2:mem:ecommerce
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        show_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
+
+---
+# Dev 환경 (MySQL 8.0)
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/ecommerce?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ecommerce_user
+    password: ecommerce_password
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # 개발 환경에서는 update
+    properties:
+      hibernate:
+        show_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
+
+---
+# Prod 환경 (MySQL 8.0 - 운영)
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ecommerce?useSSL=true&serverTimezone=Asia/Seoul}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USERNAME:ecommerce_user}
+    password: ${DB_PASSWORD:ecommerce_password}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 운영 환경에서는 validate (변경 금지)
+    properties:
+      hibernate:
+        show_sql: false  # 운영에서는 SQL 로그 off
+
+logging:
+  level:
+    com.hhplus.ecommerce: info
+
+---
+# InMemory 환경 (순수 인메모리 Repository)
+spring:
+  config:
+    activate:
+      on-profile: inmemory
+
+  # JPA 비활성화
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+# Repository 타입을 inmemory로 설정
+repository:
+  type: inmemory
+
+logging:
+  level:
+    com.hhplus.ecommerce: debug

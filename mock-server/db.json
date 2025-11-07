@@ -1,0 +1,775 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "hong@example.com",
+      "name": "홍길동",
+      "balance": 150000,
+      "role": "USER",
+      "status": "ACTIVE",
+      "createdAt": "2025-01-15T09:00:00"
+    },
+    {
+      "id": 2,
+      "email": "kim@example.com",
+      "name": "김철수",
+      "balance": 50000,
+      "role": "USER",
+      "status": "ACTIVE",
+      "createdAt": "2025-02-10T14:30:00"
+    },
+    {
+      "id": 3,
+      "email": "lee@example.com",
+      "name": "이영희",
+      "balance": 280000,
+      "role": "USER",
+      "status": "ACTIVE",
+      "createdAt": "2025-01-20T11:15:00"
+    },
+    {
+      "id": 4,
+      "email": "park@example.com",
+      "name": "박민수",
+      "balance": 5000,
+      "role": "USER",
+      "status": "ACTIVE",
+      "createdAt": "2025-03-05T16:45:00"
+    },
+    {
+      "id": 5,
+      "email": "admin@example.com",
+      "name": "관리자",
+      "balance": 1000000,
+      "role": "ADMIN",
+      "status": "ACTIVE",
+      "createdAt": "2025-01-01T00:00:00"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "전자제품",
+      "description": "컴퓨터 및 주변기기"
+    },
+    {
+      "id": 2,
+      "name": "가전제품",
+      "description": "생활 가전"
+    },
+    {
+      "id": 3,
+      "name": "패션",
+      "description": "의류 및 액세서리"
+    },
+    {
+      "id": 4,
+      "name": "도서",
+      "description": "책 및 전자책"
+    },
+    {
+      "id": 5,
+      "name": "스포츠",
+      "description": "운동용품"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "name": "맥북 프로 M3",
+      "description": "Apple M3 칩, 16GB RAM, 512GB SSD, 14인치 Liquid Retina XDR 디스플레이",
+      "price": 2390000,
+      "stock": 15,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "AVAILABLE",
+      "safetyStock": 5,
+      "salesCount": 48,
+      "createdAt": "2025-01-10T10:00:00",
+      "updatedAt": "2025-10-28T15:30:00"
+    },
+    {
+      "id": 2,
+      "name": "로지텍 MX Master 3S",
+      "description": "무선 마우스, 8K DPI, 조용한 클릭, USB-C 충전",
+      "price": 139000,
+      "stock": 45,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "AVAILABLE",
+      "safetyStock": 10,
+      "salesCount": 156,
+      "createdAt": "2025-01-15T11:00:00",
+      "updatedAt": "2025-10-27T09:20:00"
+    },
+    {
+      "id": 3,
+      "name": "키크론 K8 Pro",
+      "description": "무선 기계식 키보드, RGB 백라이트, 핫스왑 가능, 갈축",
+      "price": 179000,
+      "stock": 28,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "AVAILABLE",
+      "safetyStock": 8,
+      "salesCount": 89,
+      "createdAt": "2025-01-20T14:00:00",
+      "updatedAt": "2025-10-26T18:45:00"
+    },
+    {
+      "id": 4,
+      "name": "LG 울트라기어 27인치",
+      "description": "게이밍 모니터, 2K QHD, 165Hz, 1ms, HDR10, IPS 패널",
+      "price": 489000,
+      "stock": 22,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "AVAILABLE",
+      "safetyStock": 5,
+      "salesCount": 112,
+      "createdAt": "2025-02-01T09:00:00",
+      "updatedAt": "2025-10-28T12:00:00"
+    },
+    {
+      "id": 5,
+      "name": "소니 WH-1000XM5",
+      "description": "무선 노이즈 캔슬링 헤드폰, 30시간 배터리, LDAC 지원",
+      "price": 429000,
+      "stock": 18,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "AVAILABLE",
+      "safetyStock": 6,
+      "salesCount": 134,
+      "createdAt": "2025-02-05T13:00:00",
+      "updatedAt": "2025-10-28T10:15:00"
+    },
+    {
+      "id": 6,
+      "name": "다이슨 V15 무선청소기",
+      "description": "레이저 먼지 감지, 60분 사용, HEPA 필터",
+      "price": 899000,
+      "stock": 8,
+      "categoryId": 2,
+      "categoryName": "가전제품",
+      "status": "AVAILABLE",
+      "safetyStock": 3,
+      "salesCount": 67,
+      "createdAt": "2025-02-10T10:00:00",
+      "updatedAt": "2025-10-25T14:30:00"
+    },
+    {
+      "id": 7,
+      "name": "에어팟 프로 2세대",
+      "description": "액티브 노이즈 캔슬링, 공간 음향, MagSafe 충전",
+      "price": 359000,
+      "stock": 0,
+      "categoryId": 1,
+      "categoryName": "전자제품",
+      "status": "OUT_OF_STOCK",
+      "safetyStock": 10,
+      "salesCount": 203,
+      "createdAt": "2025-02-15T11:00:00",
+      "updatedAt": "2025-10-28T08:00:00"
+    },
+    {
+      "id": 8,
+      "name": "나이키 에어 줌 페가수스",
+      "description": "러닝화, 경량 쿠셔닝, 통기성 메쉬",
+      "price": 159000,
+      "stock": 35,
+      "categoryId": 5,
+      "categoryName": "스포츠",
+      "status": "AVAILABLE",
+      "safetyStock": 12,
+      "salesCount": 78,
+      "createdAt": "2025-03-01T09:00:00",
+      "updatedAt": "2025-10-27T16:20:00"
+    },
+    {
+      "id": 9,
+      "name": "클린 코드 (개정판)",
+      "description": "로버트 C. 마틴 저, 애자일 소프트웨어 장인 정신",
+      "price": 33000,
+      "stock": 50,
+      "categoryId": 4,
+      "categoryName": "도서",
+      "status": "AVAILABLE",
+      "safetyStock": 15,
+      "salesCount": 142,
+      "createdAt": "2025-01-25T12:00:00",
+      "updatedAt": "2025-10-26T11:00:00"
+    },
+    {
+      "id": 10,
+      "name": "파타고니아 플리스 자켓",
+      "description": "재활용 폴리에스터, 보온성 우수, 친환경 소재",
+      "price": 189000,
+      "stock": 20,
+      "categoryId": 3,
+      "categoryName": "패션",
+      "status": "AVAILABLE",
+      "safetyStock": 8,
+      "salesCount": 56,
+      "createdAt": "2025-03-10T10:00:00",
+      "updatedAt": "2025-10-28T13:45:00"
+    }
+  ],
+  "carts": [
+    {
+      "id": 1,
+      "userId": 1,
+      "items": [
+        {
+          "id": 1,
+          "productId": 2,
+          "productName": "로지텍 MX Master 3S",
+          "price": 139000,
+          "priceAtAdd": 139000,
+          "quantity": 1,
+          "subtotal": 139000,
+          "isPriceChanged": false
+        },
+        {
+          "id": 2,
+          "productId": 3,
+          "productName": "키크론 K8 Pro",
+          "price": 179000,
+          "priceAtAdd": 179000,
+          "quantity": 1,
+          "subtotal": 179000,
+          "isPriceChanged": false
+        }
+      ],
+      "totalAmount": 318000,
+      "createdAt": "2025-10-27T14:20:00",
+      "updatedAt": "2025-10-27T15:30:00"
+    },
+    {
+      "id": 2,
+      "userId": 2,
+      "items": [
+        {
+          "id": 3,
+          "productId": 9,
+          "productName": "클린 코드 (개정판)",
+          "price": 33000,
+          "priceAtAdd": 33000,
+          "quantity": 2,
+          "subtotal": 66000,
+          "isPriceChanged": false
+        }
+      ],
+      "totalAmount": 66000,
+      "createdAt": "2025-10-28T09:00:00",
+      "updatedAt": "2025-10-28T09:00:00"
+    },
+    {
+      "id": 3,
+      "userId": 3,
+      "items": [
+        {
+          "id": 4,
+          "productId": 1,
+          "productName": "맥북 프로 M3",
+          "price": 2390000,
+          "priceAtAdd": 2390000,
+          "quantity": 1,
+          "subtotal": 2390000,
+          "isPriceChanged": false
+        },
+        {
+          "id": 5,
+          "productId": 4,
+          "productName": "LG 울트라기어 27인치",
+          "price": 489000,
+          "priceAtAdd": 450000,
+          "quantity": 1,
+          "subtotal": 489000,
+          "isPriceChanged": true
+        }
+      ],
+      "totalAmount": 2879000,
+      "createdAt": "2025-10-26T11:00:00",
+      "updatedAt": "2025-10-28T10:00:00"
+    }
+  ],
+  "orders": [
+    {
+      "orderId": 1,
+      "orderNumber": "ORD-20251028-000001",
+      "userId": 1,
+      "userName": "홍길동",
+      "items": [
+        {
+          "productId": 5,
+          "productName": "소니 WH-1000XM5",
+          "price": 429000,
+          "quantity": 1,
+          "subtotal": 429000
+        }
+      ],
+      "totalAmount": 429000,
+      "discountAmount": 42900,
+      "finalAmount": 386100,
+      "status": "PAID",
+      "orderedAt": "2025-10-28T10:30:00",
+      "paidAt": "2025-10-28T10:30:05"
+    },
+    {
+      "orderId": 2,
+      "orderNumber": "ORD-20251027-000002",
+      "userId": 2,
+      "userName": "김철수",
+      "items": [
+        {
+          "productId": 2,
+          "productName": "로지텍 MX Master 3S",
+          "price": 139000,
+          "quantity": 1,
+          "subtotal": 139000
+        },
+        {
+          "productId": 9,
+          "productName": "클린 코드 (개정판)",
+          "price": 33000,
+          "quantity": 3,
+          "subtotal": 99000
+        }
+      ],
+      "totalAmount": 238000,
+      "discountAmount": 5000,
+      "finalAmount": 233000,
+      "status": "PAID",
+      "orderedAt": "2025-10-27T15:20:00",
+      "paidAt": "2025-10-27T15:20:08"
+    },
+    {
+      "orderId": 3,
+      "orderNumber": "ORD-20251026-000003",
+      "userId": 3,
+      "userName": "이영희",
+      "items": [
+        {
+          "productId": 6,
+          "productName": "다이슨 V15 무선청소기",
+          "price": 899000,
+          "quantity": 1,
+          "subtotal": 899000
+        }
+      ],
+      "totalAmount": 899000,
+      "discountAmount": 30000,
+      "finalAmount": 869000,
+      "status": "PAID",
+      "orderedAt": "2025-10-26T14:10:00",
+      "paidAt": "2025-10-26T14:10:12"
+    },
+    {
+      "orderId": 4,
+      "orderNumber": "ORD-20251025-000004",
+      "userId": 1,
+      "userName": "홍길동",
+      "items": [
+        {
+          "productId": 8,
+          "productName": "나이키 에어 줌 페가수스",
+          "price": 159000,
+          "quantity": 2,
+          "subtotal": 318000
+        }
+      ],
+      "totalAmount": 318000,
+      "discountAmount": 0,
+      "finalAmount": 318000,
+      "status": "PAID",
+      "orderedAt": "2025-10-25T11:45:00",
+      "paidAt": "2025-10-25T11:45:03"
+    },
+    {
+      "orderId": 5,
+      "orderNumber": "ORD-20251024-000005",
+      "userId": 3,
+      "userName": "이영희",
+      "items": [
+        {
+          "productId": 7,
+          "productName": "에어팟 프로 2세대",
+          "price": 359000,
+          "quantity": 1,
+          "subtotal": 359000
+        }
+      ],
+      "totalAmount": 359000,
+      "discountAmount": 35900,
+      "finalAmount": 323100,
+      "status": "CANCELLED",
+      "orderedAt": "2025-10-24T16:30:00",
+      "paidAt": "2025-10-24T16:30:04",
+      "cancelledAt": "2025-10-24T17:00:00",
+      "cancelReason": "단순 변심"
+    }
+  ],
+  "coupons": [
+    {
+      "id": 1,
+      "code": "WELCOME10",
+      "name": "신규가입 10% 할인",
+      "description": "신규 가입 회원 대상 10% 할인 쿠폰 (최대 1만원)",
+      "type": "PERCENTAGE",
+      "discountValue": 10,
+      "minimumOrderAmount": 50000,
+      "maximumDiscountAmount": 10000,
+      "totalQuantity": 1000,
+      "remainingQuantity": 847,
+      "status": "ACTIVE",
+      "issueStartAt": "2025-01-01T00:00:00",
+      "issueEndAt": "2025-12-31T23:59:59",
+      "validFrom": "2025-01-01T00:00:00",
+      "validUntil": "2025-12-31T23:59:59"
+    },
+    {
+      "id": 2,
+      "code": "SUMMER5000",
+      "name": "여름 특가 5천원 할인",
+      "description": "3만원 이상 구매시 5천원 즉시 할인",
+      "type": "FIXED_AMOUNT",
+      "discountValue": 5000,
+      "minimumOrderAmount": 30000,
+      "maximumDiscountAmount": 5000,
+      "totalQuantity": 500,
+      "remainingQuantity": 12,
+      "status": "ACTIVE",
+      "issueStartAt": "2025-06-01T00:00:00",
+      "issueEndAt": "2025-08-31T23:59:59",
+      "validFrom": "2025-06-01T00:00:00",
+      "validUntil": "2025-08-31T23:59:59"
+    },
+    {
+      "id": 3,
+      "code": "VIP20",
+      "name": "VIP 회원 20% 할인",
+      "description": "VIP 회원 전용 20% 할인 쿠폰 (최대 3만원)",
+      "type": "PERCENTAGE",
+      "discountValue": 20,
+      "minimumOrderAmount": 100000,
+      "maximumDiscountAmount": 30000,
+      "totalQuantity": 100,
+      "remainingQuantity": 73,
+      "status": "ACTIVE",
+      "issueStartAt": "2025-01-01T00:00:00",
+      "issueEndAt": "2025-12-31T23:59:59",
+      "validFrom": "2025-01-01T00:00:00",
+      "validUntil": "2025-12-31T23:59:59"
+    },
+    {
+      "id": 4,
+      "code": "FLASHSALE",
+      "name": "플래시 세일 15% 할인",
+      "description": "선착순 100명 한정 15% 할인",
+      "type": "PERCENTAGE",
+      "discountValue": 15,
+      "minimumOrderAmount": 0,
+      "maximumDiscountAmount": 20000,
+      "totalQuantity": 100,
+      "remainingQuantity": 0,
+      "status": "EXHAUSTED",
+      "issueStartAt": "2025-10-25T10:00:00",
+      "issueEndAt": "2025-10-25T12:00:00",
+      "validFrom": "2025-10-25T10:00:00",
+      "validUntil": "2025-10-25T23:59:59"
+    },
+    {
+      "id": 5,
+      "code": "BLACKFRIDAY",
+      "name": "블랙프라이데이 25% 할인",
+      "description": "블랙프라이데이 특가 25% 할인",
+      "type": "PERCENTAGE",
+      "discountValue": 25,
+      "minimumOrderAmount": 200000,
+      "maximumDiscountAmount": 50000,
+      "totalQuantity": 500,
+      "remainingQuantity": 500,
+      "status": "INACTIVE",
+      "issueStartAt": "2025-11-25T00:00:00",
+      "issueEndAt": "2025-11-30T23:59:59",
+      "validFrom": "2025-11-25T00:00:00",
+      "validUntil": "2025-11-30T23:59:59"
+    }
+  ],
+  "userCoupons": [
+    {
+      "userCouponId": 1,
+      "userId": 1,
+      "couponId": 1,
+      "couponCode": "WELCOME10",
+      "couponName": "신규가입 10% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 10,
+      "minimumOrderAmount": 50000,
+      "maximumDiscountAmount": 10000,
+      "status": "USED",
+      "issuedAt": "2025-01-15T09:30:00",
+      "usedAt": "2025-10-28T10:30:00",
+      "canUse": false
+    },
+    {
+      "userCouponId": 2,
+      "userId": 1,
+      "couponId": 3,
+      "couponCode": "VIP20",
+      "couponName": "VIP 회원 20% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 20,
+      "minimumOrderAmount": 100000,
+      "maximumDiscountAmount": 30000,
+      "status": "ISSUED",
+      "issuedAt": "2025-10-20T14:00:00",
+      "canUse": true
+    },
+    {
+      "userCouponId": 3,
+      "userId": 2,
+      "couponId": 1,
+      "couponCode": "WELCOME10",
+      "couponName": "신규가입 10% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 10,
+      "minimumOrderAmount": 50000,
+      "maximumDiscountAmount": 10000,
+      "status": "ISSUED",
+      "issuedAt": "2025-02-10T14:45:00",
+      "canUse": true
+    },
+    {
+      "userCouponId": 4,
+      "userId": 2,
+      "couponId": 2,
+      "couponCode": "SUMMER5000",
+      "couponName": "여름 특가 5천원 할인",
+      "couponType": "FIXED_AMOUNT",
+      "discountValue": 5000,
+      "minimumOrderAmount": 30000,
+      "maximumDiscountAmount": 5000,
+      "status": "USED",
+      "issuedAt": "2025-06-15T10:00:00",
+      "usedAt": "2025-10-27T15:20:00",
+      "canUse": false
+    },
+    {
+      "userCouponId": 5,
+      "userId": 3,
+      "couponId": 1,
+      "couponCode": "WELCOME10",
+      "couponName": "신규가입 10% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 10,
+      "minimumOrderAmount": 50000,
+      "maximumDiscountAmount": 10000,
+      "status": "USED",
+      "issuedAt": "2025-01-20T11:30:00",
+      "usedAt": "2025-10-24T16:30:00",
+      "canUse": false
+    },
+    {
+      "userCouponId": 6,
+      "userId": 3,
+      "couponId": 3,
+      "couponCode": "VIP20",
+      "couponName": "VIP 회원 20% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 20,
+      "minimumOrderAmount": 100000,
+      "maximumDiscountAmount": 30000,
+      "status": "USED",
+      "issuedAt": "2025-02-01T09:00:00",
+      "usedAt": "2025-10-26T14:10:00",
+      "canUse": false
+    },
+    {
+      "userCouponId": 7,
+      "userId": 4,
+      "couponId": 1,
+      "couponCode": "WELCOME10",
+      "couponName": "신규가입 10% 할인",
+      "couponType": "PERCENTAGE",
+      "discountValue": 10,
+      "minimumOrderAmount": 50000,
+      "maximumDiscountAmount": 10000,
+      "status": "ISSUED",
+      "issuedAt": "2025-03-05T17:00:00",
+      "canUse": true
+    }
+  ],
+  "balanceHistory": [
+    {
+      "id": 1,
+      "userId": 1,
+      "type": "CHARGE",
+      "amount": 100000,
+      "balanceBefore": 50000,
+      "balanceAfter": 150000,
+      "description": "잔액 충전",
+      "createdAt": "2025-10-25T09:00:00"
+    },
+    {
+      "id": 2,
+      "userId": 1,
+      "type": "USE",
+      "amount": 386100,
+      "balanceBefore": 536100,
+      "balanceAfter": 150000,
+      "description": "주문 결제 (ORD-20251028-000001)",
+      "createdAt": "2025-10-28T10:30:05"
+    },
+    {
+      "id": 3,
+      "userId": 1,
+      "type": "USE",
+      "amount": 318000,
+      "balanceBefore": 854100,
+      "balanceAfter": 536100,
+      "description": "주문 결제 (ORD-20251025-000004)",
+      "createdAt": "2025-10-25T11:45:03"
+    },
+    {
+      "id": 4,
+      "userId": 2,
+      "type": "CHARGE",
+      "amount": 50000,
+      "balanceBefore": 0,
+      "balanceAfter": 50000,
+      "description": "잔액 충전",
+      "createdAt": "2025-10-27T14:00:00"
+    },
+    {
+      "id": 5,
+      "userId": 2,
+      "type": "USE",
+      "amount": 233000,
+      "balanceBefore": 283000,
+      "balanceAfter": 50000,
+      "description": "주문 결제 (ORD-20251027-000002)",
+      "createdAt": "2025-10-27T15:20:08"
+    },
+    {
+      "id": 6,
+      "userId": 3,
+      "type": "CHARGE",
+      "amount": 200000,
+      "balanceBefore": 80000,
+      "balanceAfter": 280000,
+      "description": "잔액 충전",
+      "createdAt": "2025-10-20T10:00:00"
+    },
+    {
+      "id": 7,
+      "userId": 3,
+      "type": "USE",
+      "amount": 869000,
+      "balanceBefore": 1149000,
+      "balanceAfter": 280000,
+      "description": "주문 결제 (ORD-20251026-000003)",
+      "createdAt": "2025-10-26T14:10:12"
+    },
+    {
+      "id": 8,
+      "userId": 3,
+      "type": "USE",
+      "amount": 323100,
+      "balanceBefore": 1472100,
+      "balanceAfter": 1149000,
+      "description": "주문 결제 (ORD-20251024-000005)",
+      "createdAt": "2025-10-24T16:30:04"
+    },
+    {
+      "id": 9,
+      "userId": 3,
+      "type": "REFUND",
+      "amount": 323100,
+      "balanceBefore": 1149000,
+      "balanceAfter": 1472100,
+      "description": "주문 취소 환불 (ORD-20251024-000005)",
+      "createdAt": "2025-10-24T17:00:15"
+    },
+    {
+      "id": 10,
+      "userId": 4,
+      "type": "CHARGE",
+      "amount": 5000,
+      "balanceBefore": 0,
+      "balanceAfter": 5000,
+      "description": "잔액 충전",
+      "createdAt": "2025-10-28T08:00:00"
+    }
+  ],
+  "popularProducts": [
+    {
+      "rank": 1,
+      "productId": 7,
+      "productName": "에어팟 프로 2세대",
+      "price": 359000,
+      "totalSalesCount": 203,
+      "totalSalesAmount": 72877000
+    },
+    {
+      "rank": 2,
+      "productId": 2,
+      "productName": "로지텍 MX Master 3S",
+      "price": 139000,
+      "totalSalesCount": 156,
+      "totalSalesAmount": 21684000
+    },
+    {
+      "rank": 3,
+      "productId": 9,
+      "productName": "클린 코드 (개정판)",
+      "price": 33000,
+      "totalSalesCount": 142,
+      "totalSalesAmount": 4686000
+    },
+    {
+      "rank": 4,
+      "productId": 5,
+      "productName": "소니 WH-1000XM5",
+      "price": 429000,
+      "totalSalesCount": 134,
+      "totalSalesAmount": 57486000
+    },
+    {
+      "rank": 5,
+      "productId": 4,
+      "productName": "LG 울트라기어 27인치",
+      "price": 489000,
+      "totalSalesCount": 112,
+      "totalSalesAmount": 54768000
+    }
+  ],
+  "restockNotifications": [
+    {
+      "id": 1,
+      "userId": 2,
+      "productId": 7,
+      "productName": "에어팟 프로 2세대",
+      "status": "PENDING",
+      "requestedAt": "2025-10-28T09:30:00"
+    },
+    {
+      "id": 2,
+      "userId": 4,
+      "productId": 7,
+      "productName": "에어팟 프로 2세대",
+      "status": "PENDING",
+      "requestedAt": "2025-10-28T11:15:00"
+    },
+    {
+      "id": 3,
+      "userId": 1,
+      "productId": 7,
+      "productName": "에어팟 프로 2세대",
+      "status": "SENT",
+      "requestedAt": "2025-10-20T14:00:00",
+      "sentAt": "2025-10-22T10:00:00"
+    }
+  ]
+}
