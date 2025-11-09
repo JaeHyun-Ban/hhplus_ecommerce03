@@ -1,0 +1,365 @@
+// E-Commerce Platform ERD
+// Generated for dbdiagram.io
+// Use at: https://dbdiagram.io/d
+
+Project ecommerce {
+  database_type: 'MySQL'
+  Note: '''
+    # E-Commerce Platform Database Schema
+    이커머스 플랫폼의 데이터베이스 스키마
+    - 사용자 및 잔액 관리
+    - 상품 및 재고 관리
+    - 장바구니 및 주문 관리
+    - 쿠폰 시스템
+    - 외부 연동 이벤트 관리
+  '''
+}
+
+// ========================================
+// User Domain
+// ========================================
+
+Table users {
+  id bigint [pk, increment, note: '사용자 ID']
+  email varchar(100) [unique, not null, note: '이메일']
+  password varchar(255) [not null, note: '비밀번호']
+  name varchar(50) [not null, note: '이름']
+  balance decimal(15,2) [not null, default: 0, note: '잔액']
+  role varchar(20) [not null, note: 'USER, ADMIN']
+  status varchar(20) [not null, note: 'ACTIVE, INACTIVE, DELETED']
+  created_at datetime [not null, note: '생성일시']
+  updated_at datetime [not null, note: '수정일시']
+
+  indexes {
+    email [unique, name: 'idx_users_email']
+    status [name: 'idx_users_status']
+  }
+
+  Note: '사용자 테이블 - 잔액 및 계정 정보 관리'
+}
+
+Table balance_histories {
+  id bigint [pk, increment, note: '잔액 이력 ID']
+  user_id bigint [not null, ref: > users.id, note: '사용자 ID']
+  type varchar(20) [not null, note: 'CHARGE, USE, REFUND']
+  amount decimal(15,2) [not null, note: '거래 금액']
+  balance_before decimal(15,2) [not null, note: '거래 전 잔액']
+  balance_after decimal(15,2) [not null, note: '거래 후 잔액']
+  description varchar(500) [note: '설명']
+  created_at datetime [not null, note: '생성일시']
+
+  indexes {
+    user_id [name: 'idx_balance_histories_user_id']
+    (user_id, created_at) [name: 'idx_balance_histories_user_created']
+  }
+
+  Note: '잔액 변동 이력 - 충전/사용/환불 내역'
+}
+
+// ========================================
+// Product Domain
+// ========================================
+
+Table categories {
+  id bigint [pk, increment, note: '카테고리 ID']
+  name varchar(50) [unique, not null, note: '카테고리명']
+  description varchar(500) [note: '설명']
+  created_at datetime [not null, note: '생성일시']
+
+  Note: '상품 카테고리'
+}
+
+Table products {
+  id bigint [pk, increment, note: '상품 ID']
+  name varchar(200) [not null, note: '상품명']
+  description varchar(1000) [note: '상품 설명']
+  price decimal(15,2) [not null, note: '판매 가격']
+  stock integer [not null, default: 0, note: '재고 수량']
+  safety_stock integer [not null, default: 10, note: '안전 재고']
+  category_id bigint [ref: > categories.id, note: '카테고리 ID']
+  status varchar(20) [not null, note: 'AVAILABLE, OUT_OF_STOCK, DISCONTINUED']
+  version bigint [not null, default: 0, note: 'Optimistic Lock']
+  created_at datetime [not null, note: '생성일시']
+  updated_at datetime [not null, note: '수정일시']
+
+  indexes {
+    category_id [name: 'idx_products_category_id']
+    status [name: 'idx_products_status']
+    (status, stock) [name: 'idx_products_status_stock']
+  }
+
+  Note: '상품 테이블 - Optimistic Lock으로 재고 동시성 제어'
+}
+
+Table stock_histories {
+  id bigint [pk, increment, note: '재고 이력 ID']
+  product_id bigint [not null, ref: > products.id, note: '상품 ID']
+  type varchar(20) [not null, note: 'INCREASE, DECREASE, ADJUST']
+  quantity integer [not null, note: '변동 수량']
+  stock_before integer [not null, note: '변동 전 재고']
+  stock_after integer [not null, note: '변동 후 재고']
+  reason varchar(500) [note: '변동 사유']
+  created_at datetime [not null, note: '생성일시']
+
+  indexes {
+    product_id [name: 'idx_stock_histories_product_id']
+    (product_id, created_at) [name: 'idx_stock_histories_product_created']
+  }
+
+  Note: '재고 변동 이력'
+}
+
+Table product_statistics {
+  id bigint [pk, increment, note: '통계 ID']
+  product_id bigint [not null, ref: > products.id, note: '상품 ID']
+  statistics_date date [not null, note: '통계 일자']
+  sales_count integer [not null, default: 0, note: '판매 수량']
+  sales_amount decimal(15,2) [not null, default: 0, note: '판매 금액']
+  view_count integer [not null, default: 0, note: '조회 수']
+  created_at datetime [not null, note: '생성일시']
+
+  indexes {
+    (product_id, statistics_date) [unique, name: 'uk_product_statistics']
+    statistics_date [name: 'idx_product_statistics_date']
+  }
+
+  Note: '상품별 일일 판매/조회 통계 - 인기 상품 조회에 사용'
+}
+
+Table restock_notifications {
+  id bigint [pk, increment, note: '알림 ID']
+  user_id bigint [not null, ref: > users.id, note: '사용자 ID']
+  product_id bigint [not null, ref: > products.id, note: '상품 ID']
+  status varchar(20) [not null, note: 'PENDING, SENT, CANCELLED']
+  requested_at datetime [not null, note: '요청일시']
+  sent_at datetime [note: '발송일시']
+
+  indexes {
+    (user_id, product_id, status) [unique, name: 'uk_restock_notifications']
+    (product_id, status) [name: 'idx_restock_notifications_product_status']
+  }
+
+  Note: '재입고 알림 - 품절 상품 재입고 시 사용자에게 알림'
+}
+
+// ========================================
+// Cart Domain
+// ========================================
+
+Table carts {
+  id bigint [pk, increment, note: '장바구니 ID']
+  user_id bigint [unique, not null, ref: - users.id, note: '사용자 ID (1:1)']
+  created_at datetime [not null, note: '생성일시']
+  updated_at datetime [not null, note: '수정일시']
+
+  Note: '장바구니 - 사용자당 1개'
+}
+
+Table cart_items {
+  id bigint [pk, increment, note: '장바구니 항목 ID']
+  cart_id bigint [not null, ref: > carts.id, note: '장바구니 ID']
+  product_id bigint [not null, ref: > products.id, note: '상품 ID']
+  quantity integer [not null, note: '수량']
+  price_at_add decimal(15,2) [not null, note: '담은 시점 가격']
+  created_at datetime [not null, note: '생성일시']
+  updated_at datetime [not null, note: '수정일시']
+
+  indexes {
+    (cart_id, product_id) [unique, name: 'uk_cart_items']
+    cart_id [name: 'idx_cart_items_cart_id']
+  }
+
+  Note: '장바구니 항목 - 가격 변동 추적'
+}
+
+// ========================================
+// Order Domain
+// ========================================
+
+Table orders {
+  id bigint [pk, increment, note: '주문 ID']
+  order_number varchar(50) [unique, not null, note: '주문 번호']
+  user_id bigint [not null, ref: > users.id, note: '사용자 ID']
+  total_amount decimal(15,2) [not null, note: '총 금액']
+  discount_amount decimal(15,2) [not null, default: 0, note: '할인 금액']
+  final_amount decimal(15,2) [not null, note: '최종 결제 금액']
+  status varchar(20) [not null, note: 'PENDING, PAID, CANCELLED, REFUNDED']
+  ordered_at datetime [not null, note: '주문일시']
+  paid_at datetime [note: '결제일시']
+  cancelled_at datetime [note: '취소일시']
+  cancellation_reason varchar(500) [note: '취소 사유']
+  idempotency_key varchar(100) [unique, not null, note: '멱등성 키']
+
+  indexes {
+    user_id [name: 'idx_orders_user_id']
+    status [name: 'idx_orders_status']
+    (user_id, ordered_at) [name: 'idx_orders_user_ordered']
+    idempotency_key [unique, name: 'uk_orders_idempotency_key']
+  }
+
+  Note: '주문 - 멱등성 키로 중복 주문 방지'
+}
+
+Table order_items {
+  id bigint [pk, increment, note: '주문 항목 ID']
+  order_id bigint [not null, ref: > orders.id, note: '주문 ID']
+  product_id bigint [not null, ref: > products.id, note: '상품 ID']
+  product_name varchar(200) [not null, note: '상품명 (스냅샷)']
+  price decimal(15,2) [not null, note: '단가 (스냅샷)']
+  quantity integer [not null, note: '수량']
+  subtotal decimal(15,2) [not null, note: '소계']
+
+  indexes {
+    order_id [name: 'idx_order_items_order_id']
+    product_id [name: 'idx_order_items_product_id']
+  }
+
+  Note: '주문 항목 - 주문 시점의 상품 정보 스냅샷 저장'
+}
+
+Table payments {
+  id bigint [pk, increment, note: '결제 ID']
+  order_id bigint [unique, not null, ref: - orders.id, note: '주문 ID (1:1)']
+  amount decimal(15,2) [not null, note: '결제 금액']
+  method varchar(20) [not null, note: 'BALANCE (현재는 잔액 결제만)']
+  status varchar(20) [not null, note: 'PENDING, COMPLETED, FAILED, CANCELLED']
+  created_at datetime [not null, note: '생성일시']
+  completed_at datetime [note: '완료일시']
+  failure_reason varchar(500) [note: '실패 사유']
+
+  indexes {
+    order_id [unique, name: 'uk_payments_order_id']
+    status [name: 'idx_payments_status']
+  }
+
+  Note: '결제 - 주문당 1개 결제'
+}
+
+// ========================================
+// Coupon Domain
+// ========================================
+
+Table coupons {
+  id bigint [pk, increment, note: '쿠폰 ID']
+  code varchar(50) [unique, not null, note: '쿠폰 코드']
+  name varchar(100) [not null, note: '쿠폰명']
+  description varchar(500) [note: '설명']
+  type varchar(20) [not null, note: 'FIXED_AMOUNT, PERCENTAGE']
+  discount_value decimal(15,2) [not null, note: '할인값 (정액 또는 퍼센트)']
+  minimum_order_amount decimal(15,2) [note: '최소 주문 금액']
+  maximum_discount_amount decimal(15,2) [note: '최대 할인 금액']
+  applicable_category_id bigint [ref: > categories.id, note: '적용 카테고리']
+  total_quantity integer [not null, note: '총 발급 수량']
+  issued_quantity integer [not null, default: 0, note: '발급된 수량']
+  max_issue_per_user integer [not null, note: '1인당 최대 발급 수']
+  issue_start_at datetime [not null, note: '발급 시작일시']
+  issue_end_at datetime [not null, note: '발급 종료일시']
+  valid_from datetime [not null, note: '사용 시작일시']
+  valid_until datetime [not null, note: '사용 종료일시']
+  status varchar(20) [not null, note: 'ACTIVE, INACTIVE, EXHAUSTED']
+  version bigint [not null, default: 0, note: 'Optimistic Lock']
+  created_at datetime [not null, note: '생성일시']
+  updated_at datetime [not null, note: '수정일시']
+
+  indexes {
+    code [unique, name: 'uk_coupons_code']
+    status [name: 'idx_coupons_status']
+    (status, issue_start_at, issue_end_at) [name: 'idx_coupons_issue_period']
+  }
+
+  Note: '쿠폰 마스터 - Optimistic Lock으로 발급 동시성 제어'
+}
+
+Table user_coupons {
+  id bigint [pk, increment, note: '사용자 쿠폰 ID']
+  user_id bigint [not null, ref: > users.id, note: '사용자 ID']
+  coupon_id bigint [not null, ref: > coupons.id, note: '쿠폰 ID']
+  status varchar(20) [not null, note: 'ISSUED, USED, EXPIRED, REVOKED']
+  issued_at datetime [not null, note: '발급일시']
+  used_at datetime [note: '사용일시']
+  order_id bigint [ref: > orders.id, note: '사용한 주문 ID']
+  expired_at datetime [note: '만료일시']
+  revocation_reason varchar(500) [note: '회수 사유']
+
+  indexes {
+    (user_id, coupon_id) [name: 'idx_user_coupons_user_coupon']
+    user_id [name: 'idx_user_coupons_user_id']
+    (user_id, status) [name: 'idx_user_coupons_user_status']
+  }
+
+  Note: '사용자 보유 쿠폰 - 발급/사용/만료 관리'
+}
+
+Table order_coupons {
+  id bigint [pk, increment, note: '주문 쿠폰 ID']
+  order_id bigint [not null, ref: > orders.id, note: '주문 ID']
+  user_coupon_id bigint [not null, ref: > user_coupons.id, note: '사용자 쿠폰 ID']
+  discount_amount decimal(15,2) [not null, note: '실제 할인 금액']
+  applied_at datetime [not null, note: '적용일시']
+
+  indexes {
+    order_id [name: 'idx_order_coupons_order_id']
+    user_coupon_id [name: 'idx_order_coupons_user_coupon_id']
+  }
+
+  Note: '주문별 적용 쿠폰 - 주문에 사용된 쿠폰 기록'
+}
+
+// ========================================
+// Integration Domain
+// ========================================
+
+Table outbound_events {
+  id bigint [pk, increment, note: '이벤트 ID']
+  event_type varchar(30) [not null, note: 'ORDER_CREATED, ORDER_CANCELLED 등']
+  entity_id bigint [not null, note: '연관 엔티티 ID']
+  payload text [not null, note: 'JSON 페이로드']
+  status varchar(20) [not null, note: 'PENDING, SENDING, SUCCESS, FAILED, DEAD_LETTER']
+  retry_count integer [not null, default: 0, note: '재시도 횟수']
+  max_retry_count integer [not null, default: 3, note: '최대 재시도 횟수']
+  next_retry_at datetime [note: '다음 재시도 일시']
+  error_message text [note: '오류 메시지']
+  created_at datetime [not null, note: '생성일시']
+  sent_at datetime [note: '전송일시']
+  completed_at datetime [note: '완료일시']
+
+  indexes {
+    status [name: 'idx_outbound_events_status']
+    (status, next_retry_at) [name: 'idx_outbound_events_retry']
+    event_type [name: 'idx_outbound_events_type']
+  }
+
+  Note: '외부 시스템 연동 이벤트 - 비동기 재시도 메커니즘'
+}
+
+// ========================================
+// Relationships Summary
+// ========================================
+
+// User Domain
+// - User 1 : N BalanceHistory
+// - User 1 : 1 Cart
+// - User 1 : N Order
+// - User 1 : N UserCoupon
+// - User 1 : N RestockNotification
+
+// Product Domain
+// - Category 1 : N Product
+// - Category 1 : N Coupon (applicable)
+// - Product 1 : N StockHistory
+// - Product 1 : N ProductStatistics
+// - Product 1 : N RestockNotification
+// - Product 1 : N CartItem
+// - Product 1 : N OrderItem
+
+// Cart Domain
+// - Cart 1 : N CartItem
+
+// Order Domain
+// - Order 1 : N OrderItem
+// - Order 1 : 1 Payment
+// - Order 1 : N OrderCoupon
+
+// Coupon Domain
+// - Coupon 1 : N UserCoupon
+// - UserCoupon 1 : N OrderCoupon
