@@ -3,7 +3,7 @@ spring:
     name: ecommerce
 
   profiles:
-    active: local  # 기본 프로파일 (local: H2, dev: MySQL, inmemory: 인메모리)
+    active: dev  # 기본 프로파일 (dev: MySQL, inmemory: 인메모리)
 
   jpa:
     open-in-view: false
@@ -14,7 +14,7 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
 # Repository 타입 설정 (기본값: jpa)
-# - jpa: Spring Data JPA 사용 (H2/MySQL)
+# - jpa: Spring Data JPA 사용 (MySQL)
 # - inmemory: HashMap 기반 인메모리 Repository 사용
 repository:
   type: jpa
@@ -39,37 +39,6 @@ springdoc:
 logging:
   level:
     com.hhplus.ecommerce: debug
-
----
-# Local 환경 (H2 인메모리 DB)
-spring:
-  config:
-    activate:
-      on-profile: local
-
-  datasource:
-    url: jdbc:h2:mem:ecommerce
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-
-  jpa:
-    hibernate:
-      ddl-auto: create
-    properties:
-      hibernate:
-        show_sql: true
-        dialect: org.hibernate.dialect.H2Dialect
-
-logging:
-  level:
-    org.hibernate.SQL: debug
-    org.hibernate.type.descriptor.sql.BasicBinder: trace
 
 ---
 # Dev 환경 (MySQL 8.0)
@@ -152,3 +121,4 @@ repository:
 logging:
   level:
     com.hhplus.ecommerce: debug
+

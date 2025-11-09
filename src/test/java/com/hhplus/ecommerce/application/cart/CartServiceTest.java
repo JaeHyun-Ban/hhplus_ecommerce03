@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.application.cart;
 
+import com.hhplus.ecommerce.common.FakeRepositorySupport;
 import com.hhplus.ecommerce.domain.cart.Cart;
 import com.hhplus.ecommerce.domain.cart.CartItem;
 import com.hhplus.ecommerce.domain.product.Category;
@@ -53,7 +54,7 @@ class CartServiceTest {
     /**
      * Fake UserRepository - 인메모리 Map 사용
      */
-    static class FakeUserRepository implements UserRepository {
+    static class FakeUserRepository extends FakeRepositorySupport<User, Long> implements UserRepository {
         private final Map<Long, User> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -83,6 +84,36 @@ class CartServiceTest {
         }
 
         @Override
+        public List<User> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(User user) {
+            store.remove(user.getId());
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        public List<User> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
         public boolean existsByEmail(String email) {
             return store.values().stream()
                     .anyMatch(user -> user.getEmail().equals(email));
@@ -94,18 +125,10 @@ class CartServiceTest {
         }
 
         @Override
-        public void delete(User user) {
-            store.remove(user.getId());
-        }
-
-        @Override
-        public List<User> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
+        public Optional<User> findByEmail(String email) {
+            return store.values().stream()
+                    .filter(user -> user.getEmail().equals(email))
+                    .findFirst();
         }
 
         public void clear() {
@@ -117,7 +140,7 @@ class CartServiceTest {
     /**
      * Fake ProductRepository - 인메모리 Map 사용
      */
-    static class FakeProductRepository implements ProductRepository {
+    static class FakeProductRepository extends FakeRepositorySupport<Product, Long> implements ProductRepository {
         private final Map<Long, Product> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -149,6 +172,36 @@ class CartServiceTest {
         }
 
         @Override
+        public List<Product> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(Product product) {
+            store.remove(product.getId());
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        public List<Product> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
         public Page<Product> findAvailableProducts(Pageable pageable) {
             return Page.empty();
         }
@@ -159,28 +212,18 @@ class CartServiceTest {
         }
 
         @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
         public Optional<Product> findByIdWithLock(Long id) {
             return findById(id);
         }
 
         @Override
-        public void delete(Product product) {
-            store.remove(product.getId());
+        public List<Product> findLowStockProducts() {
+            return new ArrayList<>();
         }
 
         @Override
-        public List<Product> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
+        public List<Product> findByStatus(ProductStatus status) {
+            return new ArrayList<>();
         }
 
         public void clear() {
@@ -192,7 +235,7 @@ class CartServiceTest {
     /**
      * Fake CartRepository - 인메모리 Map 사용
      */
-    static class FakeCartRepository implements CartRepository {
+    static class FakeCartRepository extends FakeRepositorySupport<Cart, Long> implements CartRepository {
         private final Map<Long, Cart> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -203,14 +246,47 @@ class CartServiceTest {
                 Cart newCart = Cart.builder()
                         .id(newId)
                         .user(cart.getUser())
-                        .createdAt(cart.getCreatedAt())
-                        .updatedAt(cart.getUpdatedAt())
                         .build();
                 store.put(newId, newCart);
                 return newCart;
             }
             store.put(cart.getId(), cart);
             return cart;
+        }
+
+        @Override
+        public Optional<Cart> findById(Long id) {
+            return Optional.ofNullable(store.get(id));
+        }
+
+        @Override
+        public List<Cart> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(Cart cart) {
+            store.remove(cart.getId());
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        public List<Cart> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
         }
 
         @Override
@@ -226,23 +302,9 @@ class CartServiceTest {
         }
 
         @Override
-        public Optional<Cart> findById(Long id) {
-            return Optional.ofNullable(store.get(id));
-        }
-
-        @Override
-        public void delete(Cart cart) {
-            store.remove(cart.getId());
-        }
-
-        @Override
-        public List<Cart> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
+        public boolean existsByUserId(Long userId) {
+            return store.values().stream()
+                    .anyMatch(cart -> cart.getUser().getId().equals(userId));
         }
 
         public void clear() {
@@ -254,7 +316,7 @@ class CartServiceTest {
     /**
      * Fake CartItemRepository - 인메모리 List 사용
      */
-    static class FakeCartItemRepository implements CartItemRepository {
+    static class FakeCartItemRepository extends FakeRepositorySupport<CartItem, Long> implements CartItemRepository {
         private final List<CartItem> store = new ArrayList<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -267,8 +329,6 @@ class CartServiceTest {
                         .product(cartItem.getProduct())
                         .quantity(cartItem.getQuantity())
                         .priceAtAdd(cartItem.getPriceAtAdd())
-                        .addedAt(cartItem.getAddedAt())
-                        .updatedAt(cartItem.getUpdatedAt())
                         .build();
                 store.add(newCartItem);
                 return newCartItem;
@@ -277,6 +337,43 @@ class CartServiceTest {
             store.removeIf(item -> item.getId().equals(cartItem.getId()));
             store.add(cartItem);
             return cartItem;
+        }
+
+        @Override
+        public Optional<CartItem> findById(Long id) {
+            return store.stream()
+                    .filter(item -> item.getId().equals(id))
+                    .findFirst();
+        }
+
+        @Override
+        public List<CartItem> findAll() {
+            return new ArrayList<>(store);
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(CartItem cartItem) {
+            store.removeIf(item -> item.getId().equals(cartItem.getId()));
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.removeIf(item -> item.getId().equals(id));
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.stream().anyMatch(item -> item.getId().equals(id));
+        }
+
+        @Override
+        public List<CartItem> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
         }
 
         @Override
@@ -295,30 +392,20 @@ class CartServiceTest {
         }
 
         @Override
-        public Optional<CartItem> findById(Long id) {
-            return store.stream()
-                    .filter(item -> item.getId().equals(id))
-                    .findFirst();
+        public List<CartItem> findByCartWithProduct(Cart cart) {
+            return findByCart(cart);
         }
 
         @Override
-        public void delete(CartItem cartItem) {
-            store.removeIf(item -> item.getId().equals(cartItem.getId()));
+        public Long countByCart(Cart cart) {
+            return (long) store.stream()
+                    .filter(item -> item.getCart().getId().equals(cart.getId()))
+                    .count();
         }
 
         @Override
         public void deleteByCart(Cart cart) {
             store.removeIf(item -> item.getCart().getId().equals(cart.getId()));
-        }
-
-        @Override
-        public List<CartItem> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
         }
 
         public void clear() {
@@ -679,7 +766,6 @@ class CartServiceTest {
             .id(id)
             .name(name)
             .description("테스트 카테고리")
-            .createdAt(LocalDateTime.now())
             .build();
     }
 
@@ -701,8 +787,6 @@ class CartServiceTest {
         return Cart.builder()
             .id(id)
             .user(user)
-            .createdAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
             .build();
     }
 
@@ -713,8 +797,6 @@ class CartServiceTest {
             .product(product)
             .quantity(quantity)
             .priceAtAdd(product.getPrice())
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
             .build();
     }
 }

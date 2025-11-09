@@ -347,7 +347,7 @@ public class OrderService {
         }
 
         // 쿠폰 사용 가능 여부 확인
-        if (!userCoupon.isUsable()) {
+        if (!userCoupon.canUse()) {
             throw new IllegalArgumentException("사용할 수 없는 쿠폰입니다");
         }
 

@@ -32,8 +32,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.query.FluentQuery;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -74,7 +76,7 @@ class OrderServiceTest {
     /**
      * Fake OrderRepository - 인메모리 Map 사용
      */
-    static class FakeOrderRepository implements OrderRepository {
+    static abstract class FakeOrderRepository implements OrderRepository {
         private final Map<Long, Order> store = new HashMap<>();
         private final Map<String, Order> idempotencyStore = new HashMap<>();
         private final Map<String, Order> orderNumberStore = new HashMap<>();
@@ -144,6 +146,41 @@ class OrderServiceTest {
         }
 
         @Override
+        public Long countTodayOrders(LocalDate date) {
+            return store.values().stream()
+                    .filter(order -> order.getOrderedAt().toLocalDate().equals(date))
+                    .count();
+        }
+
+        @Override
+        public Page<Order> findByUserAndStatus(User user, OrderStatus status, Pageable pageable) {
+            List<Order> filtered = store.values().stream()
+                    .filter(order -> order.getUser().getId().equals(user.getId()))
+                    .filter(order -> order.getStatus() == status)
+                    .sorted(Comparator.comparing(Order::getOrderedAt).reversed())
+                    .skip(pageable.getOffset())
+                    .limit(pageable.getPageSize())
+                    .collect(Collectors.toList());
+
+            long total = store.values().stream()
+                    .filter(order -> order.getUser().getId().equals(user.getId()))
+                    .filter(order -> order.getStatus() == status)
+                    .count();
+
+            return new PageImpl<>(filtered, pageable, total);
+        }
+
+        @Override
+        public List<Order> findByOrderedAtBetween(LocalDate startDate, LocalDate endDate) {
+            return store.values().stream()
+                    .filter(order -> {
+                        LocalDate orderDate = order.getOrderedAt().toLocalDate();
+                        return !orderDate.isBefore(startDate) && !orderDate.isAfter(endDate);
+                    })
+                    .collect(Collectors.toList());
+        }
+
+        @Override
         public List<Order> findAll() {
             return new ArrayList<>(store.values());
         }
@@ -154,6 +191,34 @@ class OrderServiceTest {
             idempotencyStore.clear();
             orderNumberStore.clear();
         }
+
+        // JpaRepository stub methods
+        @Override public <S extends Order> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends Order> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public Order getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends Order> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends Order> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<Order> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public Order getOne(Long id) { return findById(id).orElse(null); }
+        @Override public Order getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends Order> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void delete(Order entity) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends Order> entities) {}
+        @Override public List<Order> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<Order> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<Order> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Order> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends Order> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Order> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends Order> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends Order, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
 
         public void clear() {
             store.clear();
@@ -166,7 +231,7 @@ class OrderServiceTest {
     /**
      * Fake UserRepository - 인메모리 Map 사용
      */
-    static class FakeUserRepository implements UserRepository {
+    static abstract class FakeUserRepository implements UserRepository {
         private final Map<Long, User> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -197,7 +262,15 @@ class OrderServiceTest {
 
         @Override
         public boolean existsByEmail(String email) {
-            return false;
+            return store.values().stream()
+                    .anyMatch(user -> user.getEmail().equals(email));
+        }
+
+        @Override
+        public Optional<User> findByEmail(String email) {
+            return store.values().stream()
+                    .filter(user -> user.getEmail().equals(email))
+                    .findFirst();
         }
 
         @Override
@@ -220,6 +293,33 @@ class OrderServiceTest {
             store.clear();
         }
 
+        // JpaRepository stub methods
+        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public User getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends User> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<User> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public User getOne(Long id) { return findById(id).orElse(null); }
+        @Override public User getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends User> entities) {}
+        @Override public List<User> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<User> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<User> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends User> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends User> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends User> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends User> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends User, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
+
         public void clear() {
             store.clear();
             idGenerator.set(1);
@@ -229,7 +329,7 @@ class OrderServiceTest {
     /**
      * Fake ProductRepository - 인메모리 Map 사용
      */
-    static class FakeProductRepository implements ProductRepository {
+    static abstract class FakeProductRepository implements ProductRepository {
         private final Map<Long, Product> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -281,6 +381,18 @@ class OrderServiceTest {
         }
 
         @Override
+        public List<Product> findLowStockProducts() {
+            return new ArrayList<>();
+        }
+
+        @Override
+        public List<Product> findByStatus(ProductStatus status) {
+            return store.values().stream()
+                    .filter(product -> product.getStatus() == status)
+                    .collect(Collectors.toList());
+        }
+
+        @Override
         public void delete(Product product) {
             store.remove(product.getId());
         }
@@ -295,6 +407,32 @@ class OrderServiceTest {
             store.clear();
         }
 
+        // JpaRepository stub methods
+        @Override public <S extends Product> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends Product> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public Product getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends Product> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends Product> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<Product> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public Product getOne(Long id) { return findById(id).orElse(null); }
+        @Override public Product getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends Product> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends Product> entities) {}
+        @Override public List<Product> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<Product> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Product> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends Product> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Product> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends Product> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends Product, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
+
         public void clear() {
             store.clear();
             idGenerator.set(1);
@@ -304,7 +442,7 @@ class OrderServiceTest {
     /**
      * Fake CartRepository - 인메모리 Map 사용
      */
-    static class FakeCartRepository implements CartRepository {
+    static abstract class FakeCartRepository implements CartRepository {
         private final Map<Long, Cart> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -316,8 +454,6 @@ class OrderServiceTest {
                         .id(newId)
                         .user(cart.getUser())
                         .items(cart.getItems())
-                        .createdAt(cart.getCreatedAt())
-                        .updatedAt(cart.getUpdatedAt())
                         .build();
                 store.put(newId, newCart);
                 return newCart;
@@ -344,6 +480,12 @@ class OrderServiceTest {
         }
 
         @Override
+        public boolean existsByUserId(Long userId) {
+            return store.values().stream()
+                    .anyMatch(cart -> cart.getUser().getId().equals(userId));
+        }
+
+        @Override
         public void delete(Cart cart) {
             store.remove(cart.getId());
         }
@@ -357,6 +499,33 @@ class OrderServiceTest {
         public void deleteAll() {
             store.clear();
         }
+
+        // JpaRepository stub methods
+        @Override public <S extends Cart> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends Cart> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public Cart getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends Cart> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends Cart> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<Cart> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public Cart getOne(Long id) { return findById(id).orElse(null); }
+        @Override public Cart getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends Cart> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends Cart> entities) {}
+        @Override public List<Cart> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<Cart> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<Cart> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Cart> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends Cart> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends Cart> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends Cart> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends Cart, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
 
         public void clear() {
             store.clear();
@@ -397,14 +566,12 @@ class OrderServiceTest {
                     .findFirst();
         }
 
-        @Override
         public List<UserCoupon> findByUser(User user) {
             return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()))
                     .collect(Collectors.toList());
         }
 
-        @Override
         public Optional<UserCoupon> findByUserAndCoupon(User user, Coupon coupon) {
             return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()) &&
@@ -413,11 +580,43 @@ class OrderServiceTest {
         }
 
         @Override
-        public int countByUserAndCoupon(User user, Coupon coupon) {
-            return (int) store.stream()
+        public Long countByUserAndCoupon(User user, Coupon coupon) {
+            return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()) &&
                                   uc.getCoupon().getId().equals(coupon.getId()))
                     .count();
+        }
+
+        @Override
+        public List<UserCoupon> findExpiredCoupons(LocalDateTime now) {
+            return store.stream()
+                    .filter(uc -> uc.getStatus() == UserCouponStatus.ISSUED)
+                    .filter(uc -> uc.getCoupon().getValidUntil().isBefore(now))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<UserCoupon> findByUserAndStatus(User user, UserCouponStatus status) {
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .filter(uc -> uc.getStatus() == status)
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<UserCoupon> findByUserOrderByIssuedAtDesc(User user) {
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .sorted(Comparator.comparing(UserCoupon::getIssuedAt).reversed())
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<UserCoupon> findAvailableCouponsByUser(User user, LocalDateTime now) {
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .filter(UserCoupon::canUse)
+                    .collect(Collectors.toList());
         }
 
         @Override
@@ -429,6 +628,34 @@ class OrderServiceTest {
         public void deleteAll() {
             store.clear();
         }
+
+        // JpaRepository stub methods
+        @Override public <S extends UserCoupon> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends UserCoupon> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public UserCoupon getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<UserCoupon> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public UserCoupon getOne(Long id) { return findById(id).orElse(null); }
+        @Override public UserCoupon getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void delete(UserCoupon entity) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends UserCoupon> entities) {}
+        @Override public List<UserCoupon> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<UserCoupon> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<UserCoupon> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends UserCoupon> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends UserCoupon> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends UserCoupon> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends UserCoupon> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends UserCoupon, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
 
         public void clear() {
             store.clear();
@@ -469,6 +696,14 @@ class OrderServiceTest {
         }
 
         @Override
+        public List<BalanceHistory> findByUserAndCreatedAtBetween(User user, LocalDateTime startDate, LocalDateTime endDate) {
+            return store.stream()
+                    .filter(history -> history.getUser().getId().equals(user.getId()))
+                    .filter(history -> !history.getCreatedAt().isBefore(startDate) && !history.getCreatedAt().isAfter(endDate))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
         public Optional<BalanceHistory> findById(Long id) {
             return store.stream()
                     .filter(history -> history.getId().equals(id))
@@ -484,6 +719,34 @@ class OrderServiceTest {
         public void deleteAll() {
             store.clear();
         }
+
+        // JpaRepository stub methods
+        @Override public <S extends BalanceHistory> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends BalanceHistory> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public BalanceHistory getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<BalanceHistory> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public BalanceHistory getOne(Long id) { return findById(id).orElse(null); }
+        @Override public BalanceHistory getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void delete(BalanceHistory entity) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends BalanceHistory> entities) {}
+        @Override public List<BalanceHistory> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<BalanceHistory> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<BalanceHistory> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends BalanceHistory> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends BalanceHistory> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends BalanceHistory> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends BalanceHistory> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends BalanceHistory, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
 
         public void clear() {
             store.clear();
@@ -504,7 +767,8 @@ class OrderServiceTest {
                 StockHistory newHistory = StockHistory.builder()
                         .id(idGenerator.getAndIncrement())
                         .product(history.getProduct())
-                        .changeAmount(history.getChangeAmount())
+                        .type(history.getType())
+                        .quantity(history.getQuantity())
                         .stockBefore(history.getStockBefore())
                         .stockAfter(history.getStockAfter())
                         .reason(history.getReason())
@@ -515,6 +779,23 @@ class OrderServiceTest {
             }
             store.add(history);
             return history;
+        }
+
+        @Override
+        public List<StockHistory> findByProductAndCreatedAtBetween(Product product, LocalDateTime startDate, LocalDateTime endDate) {
+            return store.stream()
+                    .filter(history -> history.getProduct().getId().equals(product.getId()))
+                    .filter(history -> !history.getCreatedAt().isBefore(startDate) && !history.getCreatedAt().isAfter(endDate))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public Page<StockHistory> findByProductOrderByCreatedAtDesc(Product product, Pageable pageable) {
+            List<StockHistory> filtered = store.stream()
+                    .filter(history -> history.getProduct().getId().equals(product.getId()))
+                    .sorted(Comparator.comparing(StockHistory::getCreatedAt).reversed())
+                    .collect(Collectors.toList());
+            return new PageImpl<>(filtered, pageable, filtered.size());
         }
 
         @Override
@@ -534,6 +815,34 @@ class OrderServiceTest {
             store.clear();
         }
 
+        // JpaRepository stub methods
+        @Override public <S extends StockHistory> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends StockHistory> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public StockHistory getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends StockHistory> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends StockHistory> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<StockHistory> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public StockHistory getOne(Long id) { return findById(id).orElse(null); }
+        @Override public StockHistory getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends StockHistory> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void delete(StockHistory entity) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends StockHistory> entities) {}
+        @Override public List<StockHistory> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<StockHistory> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<StockHistory> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends StockHistory> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends StockHistory> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends StockHistory> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends StockHistory> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends StockHistory, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
+
         public void clear() {
             store.clear();
             idGenerator.set(1);
@@ -542,10 +851,10 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        FakeOrderRepository fakeOrderRepo = new FakeOrderRepository();
-        FakeUserRepository fakeUserRepo = new FakeUserRepository();
-        FakeProductRepository fakeProductRepo = new FakeProductRepository();
-        FakeCartRepository fakeCartRepo = new FakeCartRepository();
+        FakeOrderRepository fakeOrderRepo = new FakeOrderRepository() {};
+        FakeUserRepository fakeUserRepo = new FakeUserRepository() {};
+        FakeProductRepository fakeProductRepo = new FakeProductRepository() {};
+        FakeCartRepository fakeCartRepo = new FakeCartRepository() {};
         FakeUserCouponRepository fakeUserCouponRepo = new FakeUserCouponRepository();
         FakeBalanceHistoryRepository fakeBalanceHistoryRepo = new FakeBalanceHistoryRepository();
         FakeStockHistoryRepository fakeStockHistoryRepo = new FakeStockHistoryRepository();
