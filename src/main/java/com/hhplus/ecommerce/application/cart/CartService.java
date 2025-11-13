@@ -51,6 +51,7 @@ public class CartService {
      * @param userId 사용자 ID
      * @return 장바구니
      */
+    @Transactional
     public Cart getCart(Long userId) {
         log.info("[UC-007] 장바구니 조회 - userId: {}", userId);
 
