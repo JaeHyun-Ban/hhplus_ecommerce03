@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.5.7'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'jacoco' // JaCoCo 플러그인 추가
 }
 
 group = 'com.hhplus'
@@ -12,6 +13,10 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
     }
+}
+
+tasks.named('compileJava') {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
 }
 
 repositories {
@@ -29,6 +34,7 @@ dependencies {
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
 
@@ -50,4 +56,43 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport // 테스트 실행 후 JaCoCo 리포트 생성
+}
+
+tasks.named('compileTestJava') {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
+}
+
+jacoco {
+    toolVersion = "0.8.11" // JaCoCo 툴 버전
+}
+
+jacocoTestReport {
+    dependsOn test // 'test' 태스크가 먼저 실행되도록 설정
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+    // 커버리지 리포트에서 제외할 파일 설정 (선택 사항)
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                    'com/hhplus/ecommerce/EcommerceApplication.class',
+                    '**/*Config.class', // 설정 파일 제외
+                    '**/*Dto.class',    // DTO 제외
+                    '**/*Request.class', // Request DTO 제외
+                    '**/*Response.class', // Response DTO 제외
+                    '**/*Exception.class', // 예외 클래스 제외
+                    '**/*Status.class', // Enum 클래스 제외
+                    '**/*Type.class', // Enum 클래스 제외
+                    '**/*Role.class', // Enum 클래스 제외
+                    '**/*Method.class', // Enum 클래스 제외
+                    '**/*Constants.class', // 상수 클래스 제외
+                    '**/*Builder.class', // Lombok Builder 클래스 제외
+                    '**/*$$EnhancerBySpringCGLIB$$*.class', // Spring AOP 프록시 제외
+                    '**/*$$SpringCGLIB$$*.class' // Spring AOP 프록시 제외
+            ])
+        }))
+    }
 }
