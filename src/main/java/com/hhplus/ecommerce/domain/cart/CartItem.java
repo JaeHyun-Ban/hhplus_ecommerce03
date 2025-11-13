@@ -9,7 +9,11 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "cart_items",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"cart_id", "product_id"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"cart_id", "product_id"}),
+        indexes = {
+                @Index(name = "idx_cart_id", columnList = "cart_id"),
+                @Index(name = "idx_product_id", columnList = "product_id")
+        })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor

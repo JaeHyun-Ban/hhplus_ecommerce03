@@ -6,7 +6,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "outbound_events")
+@Table(name = "outbound_events", indexes = {
+        @Index(name = "idx_status_next_retry_at", columnList = "status, nextRetryAt"),
+        @Index(name = "idx_event_type", columnList = "eventType"),
+        @Index(name = "idx_event_type_entity_id", columnList = "eventType, entityId")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
