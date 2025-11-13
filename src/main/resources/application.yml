@@ -41,17 +41,17 @@ logging:
     com.hhplus.ecommerce: debug
 
 ---
-# Dev 환경 (MySQL 8.0)
+# Dev 환경 (MySQL 8.0 - Docker)
 spring:
   config:
     activate:
       on-profile: dev
 
   datasource:
-    url: jdbc:mysql://localhost:3306/ecommerce?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+    url: jdbc:mysql://localhost:3306/mydb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ecommerce_user
-    password: ecommerce_password
+    username: root
+    password: 123123
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5
