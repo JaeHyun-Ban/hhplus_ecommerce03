@@ -144,19 +144,16 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
-        public Long countTodayOrders(LocalDate date) {
+        public Long countOrdersBetween(LocalDateTime startOfDay, LocalDateTime endOfDay) {
             return store.stream()
-                    .filter(order -> order.getOrderedAt().toLocalDate().equals(date))
+                    .filter(order -> !order.getOrderedAt().isBefore(startOfDay) && order.getOrderedAt().isBefore(endOfDay))
                     .count();
         }
 
         @Override
-        public List<Order> findByOrderedAtBetween(LocalDate startDate, LocalDate endDate) {
+        public List<Order> findByOrderedAtBetween(LocalDateTime startDate, LocalDateTime endDate) {
             return store.stream()
-                    .filter(order -> {
-                        LocalDate orderDate = order.getOrderedAt().toLocalDate();
-                        return !orderDate.isBefore(startDate) && !orderDate.isAfter(endDate);
-                    })
+                    .filter(order -> !order.getOrderedAt().isBefore(startDate) && order.getOrderedAt().isBefore(endDate))
                     .toList();
         }
 
