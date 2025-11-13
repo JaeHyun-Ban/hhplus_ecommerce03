@@ -6,10 +6,16 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "coupons")
+@Table(name = "coupons", indexes = {
+        @Index(name = "idx_code", columnList = "code"),
+        @Index(name = "idx_status_type", columnList = "status, type"),
+        @Index(name = "idx_issue_period", columnList = "issueStartAt, issueEndAt"),
+        @Index(name = "idx_valid_period", columnList = "validFrom, validUntil")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -101,28 +107,28 @@ public class Coupon extends BaseEntity {
             throw new IllegalArgumentException("최소 주문 금액을 충족하지 못했습니다.");
         }
 
-        BigDecimal discountAmount;
-        if (this.type == CouponType.FIXED_AMOUNT) {
-            // 정액 할인
-            discountAmount = this.discountValue;
-        } else {
-            // 정률 할인
-            discountAmount = orderAmount.multiply(this.discountValue)
-                    .divide(BigDecimal.valueOf(100), 2, BigDecimal.ROUND_DOWN);
+        BigDecimal discountAmount = switch (this.type) {
+            case FIXED_AMOUNT -> calculateFixedAmountDiscount();
+            case PERCENTAGE -> calculatePercentageDiscount(orderAmount);
+        };
 
-            // 최대 할인 금액 적용
-            if (this.maximumDiscountAmount != null
-                    && discountAmount.compareTo(this.maximumDiscountAmount) > 0) {
-                discountAmount = this.maximumDiscountAmount;
-            }
+        // 할인 금액은 주문 금액을 초과할 수 없음
+        return discountAmount.min(orderAmount);
+    }
+
+    private BigDecimal calculateFixedAmountDiscount() {
+        return this.discountValue;
+    }
+
+    private BigDecimal calculatePercentageDiscount(BigDecimal orderAmount) {
+        BigDecimal discount = orderAmount.multiply(this.discountValue)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.DOWN);
+
+        // 최대 할인 금액 적용
+        if (this.maximumDiscountAmount != null && discount.compareTo(this.maximumDiscountAmount) > 0) {
+            return this.maximumDiscountAmount;
         }
-
-        // 할인 금액이 주문 금액보다 클 수 없음
-        if (discountAmount.compareTo(orderAmount) > 0) {
-            discountAmount = orderAmount;
-        }
-
-        return discountAmount;
+        return discount;
     }
 
     // 비즈니스 로직: 쿠폰 사용 가능 여부 확인

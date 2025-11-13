@@ -51,6 +51,7 @@ public class CartService {
      * @param userId 사용자 ID
      * @return 장바구니
      */
+    @Transactional
     public Cart getCart(Long userId) {
         log.info("[UC-007] 장바구니 조회 - userId: {}", userId);
 
@@ -121,8 +122,7 @@ public class CartService {
             log.info("[UC-008] 기존 장바구니 항목 수량 증가 - cartItemId: {}, before: {}, add: {}",
                      cartItem.getId(), cartItem.getQuantity(), quantity);
 
-            cartItem.setQuantity(cartItem.getQuantity() + quantity);
-            cartItem.setUpdatedAt(LocalDateTime.now());
+            cartItem.updateQuantity(cartItem.getQuantity() + quantity);
         } else {
             // 없으면 새로 추가
             cartItem = CartItem.builder()
@@ -130,17 +130,12 @@ public class CartService {
                 .product(product)
                 .quantity(quantity)
                 .priceAtAdd(product.getPrice()) // 현재 가격 스냅샷
-                .addedAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
                 .build();
 
             cartItem = cartItemRepository.save(cartItem);
 
             log.info("[UC-008] 새 장바구니 항목 추가 - cartItemId: {}", cartItem.getId());
         }
-
-        // Step 5: 장바구니 갱신일시 업데이트
-        cart.setUpdatedAt(LocalDateTime.now());
 
         return cartItem;
     }
@@ -174,11 +169,7 @@ public class CartService {
             );
         }
 
-        cartItem.setQuantity(quantity);
-        cartItem.setUpdatedAt(LocalDateTime.now());
-
-        // 장바구니 갱신일시 업데이트
-        cartItem.getCart().setUpdatedAt(LocalDateTime.now());
+        cartItem.updateQuantity(quantity);
     }
 
     /**
@@ -194,10 +185,6 @@ public class CartService {
 
         CartItem cartItem = cartItemRepository.findById(cartItemId)
             .orElseThrow(() -> new IllegalArgumentException("장바구니 항목을 찾을 수 없습니다"));
-
-        // 장바구니 갱신일시 업데이트
-        Cart cart = cartItem.getCart();
-        cart.setUpdatedAt(LocalDateTime.now());
 
         cartItemRepository.delete(cartItem);
     }
@@ -222,9 +209,6 @@ public class CartService {
 
         // 도메인 메서드 호출
         cart.clear();
-
-        // 장바구니 갱신일시 업데이트
-        cart.setUpdatedAt(LocalDateTime.now());
     }
 
     /**
@@ -242,8 +226,6 @@ public class CartService {
 
         Cart cart = Cart.builder()
             .user(user)
-            .createdAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
             .build();
 
         return cartRepository.save(cart);

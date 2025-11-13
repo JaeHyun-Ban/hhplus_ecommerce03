@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.repository.query.FluentQuery;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -461,6 +462,59 @@ class CouponServiceTest {
             public boolean existsById(Long id) {
                 return couponStore.containsKey(id);
             }
+
+            @Override
+            public List<Coupon> findSoldOutCoupons() {
+                return couponStore.values().stream()
+                    .filter(c -> !c.canIssue())
+                    .collect(Collectors.toList());
+            }
+
+            @Override
+            public List<Coupon> findByStatus(CouponStatus status) {
+                return couponStore.values().stream()
+                    .filter(c -> c.getStatus() == status)
+                    .collect(Collectors.toList());
+            }
+
+            @Override
+            public List<Coupon> findAvailableCouponsByCategory(Long categoryId, LocalDateTime now) {
+                return couponStore.values().stream()
+                    .filter(c -> c.getStatus() == CouponStatus.ACTIVE)
+                    .filter(c -> c.canIssue())
+                    .collect(Collectors.toList());
+            }
+
+            @Override
+            public Optional<Coupon> findByCode(String code) {
+                return couponStore.values().stream()
+                    .filter(c -> c.getCode() != null && c.getCode().equals(code))
+                    .findFirst();
+            }
+
+            // JpaRepository stub methods
+            @Override public <S extends Coupon> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+            @Override public <S extends Coupon> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+            @Override public Coupon getReferenceById(Long id) { return findById(id).orElse(null); }
+            @Override public void flush() {}
+            @Override @SuppressWarnings("unchecked") public <S extends Coupon> S saveAndFlush(S entity) { return (S) save(entity); }
+            @Override @SuppressWarnings("unchecked") public <S extends Coupon> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+            @Override public void deleteAllInBatch(Iterable<Coupon> entities) {}
+            @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+            @Override public void deleteAllInBatch() {}
+            @Override public Coupon getOne(Long id) { return findById(id).orElse(null); }
+            @Override public Coupon getById(Long id) { return findById(id).orElseThrow(); }
+            @Override @SuppressWarnings("unchecked") public <S extends Coupon> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+            @Override public void deleteById(Long id) {}
+            @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+            @Override public void deleteAll(Iterable<? extends Coupon> entities) {}
+            @Override public List<Coupon> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+            @Override public org.springframework.data.domain.Page<Coupon> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends Coupon> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+            @Override public <S extends Coupon> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends Coupon> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+            @Override public <S extends Coupon> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+            @Override public <S extends Coupon, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
         };
     }
 
@@ -512,7 +566,6 @@ class CouponServiceTest {
                     .collect(Collectors.toList());
             }
 
-            @Override
             public Optional<UserCoupon> findByUserAndCoupon(User user, Coupon coupon) {
                 return userCouponStore.values().stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()))
@@ -541,12 +594,53 @@ class CouponServiceTest {
             }
 
             @Override
+            public List<UserCoupon> findExpiredCoupons(LocalDateTime now) {
+                return userCouponStore.values().stream()
+                    .filter(uc -> uc.getStatus() == UserCouponStatus.ISSUED)
+                    .filter(uc -> uc.getCoupon().getValidUntil().isBefore(now))
+                    .collect(Collectors.toList());
+            }
+
+            @Override
+            public List<UserCoupon> findByUserAndStatus(User user, UserCouponStatus status) {
+                return userCouponStore.values().stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .filter(uc -> uc.getStatus() == status)
+                    .collect(Collectors.toList());
+            }
+
             public Page<UserCoupon> findByUser(User user, Pageable pageable) {
                 List<UserCoupon> filtered = userCouponStore.values().stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()))
                     .collect(Collectors.toList());
                 return new PageImpl<>(filtered, pageable, filtered.size());
             }
+
+            // JpaRepository stub methods
+            @Override public <S extends UserCoupon> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+            @Override public <S extends UserCoupon> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+            @Override public UserCoupon getReferenceById(Long id) { return findById(id).orElse(null); }
+            @Override public void flush() {}
+            @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> S saveAndFlush(S entity) { return (S) save(entity); }
+            @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+            @Override public void deleteAllInBatch(Iterable<UserCoupon> entities) {}
+            @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+            @Override public void deleteAllInBatch() {}
+            @Override public UserCoupon getOne(Long id) { return findById(id).orElse(null); }
+            @Override public UserCoupon getById(Long id) { return findById(id).orElseThrow(); }
+            @Override @SuppressWarnings("unchecked") public <S extends UserCoupon> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+            @Override public void deleteById(Long id) {}
+            @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+            @Override public void deleteAll(Iterable<? extends UserCoupon> entities) {}
+            @Override public List<UserCoupon> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+            @Override public List<UserCoupon> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+            @Override public org.springframework.data.domain.Page<UserCoupon> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends UserCoupon> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+            @Override public <S extends UserCoupon> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends UserCoupon> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+            @Override public <S extends UserCoupon> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+            @Override public <S extends UserCoupon, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+            @Override public boolean existsById(Long id) { return userCouponStore.containsKey(id); }
         };
     }
 
@@ -605,6 +699,31 @@ class CouponServiceTest {
                 return userStore.values().stream()
                     .anyMatch(u -> u.getEmail().equals(email));
             }
+
+            // JpaRepository stub methods
+            @Override public void flush() {}
+            @Override @SuppressWarnings("unchecked") public <S extends User> S saveAndFlush(S entity) { return (S) save(entity); }
+            @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> result = new ArrayList<>(); entities.forEach(e -> result.add((S) save(e))); return result; }
+            @Override public void deleteAllInBatch(Iterable<User> entities) { entities.forEach(this::delete); }
+            @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+            @Override public void deleteAllInBatch() { deleteAll(); }
+            @Override public User getOne(Long id) { return findById(id).orElse(null); }
+            @Override public User getById(Long id) { return findById(id).orElseThrow(); }
+            @Override public User getReferenceById(Long id) { return getById(id); }
+            @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAll(Iterable<S> entities) { List<S> result = new ArrayList<>(); entities.forEach(e -> result.add((S) save(e))); return result; }
+            @Override public void deleteById(Long id) { userStore.remove(id); }
+            @Override public void deleteAllById(Iterable<? extends Long> ids) { ids.forEach(this::deleteById); }
+            @Override public void deleteAll(Iterable<? extends User> entities) { entities.forEach(this::delete); }
+            @Override public List<User> findAllById(Iterable<Long> ids) { List<User> result = new ArrayList<>(); ids.forEach(id -> findById(id).ifPresent(result::add)); return result; }
+            @Override public List<User> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+            @Override public org.springframework.data.domain.Page<User> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends User> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+            @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+            @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+            @Override public <S extends User> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+            @Override public <S extends User> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+            @Override public <S extends User> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+            @Override public <S extends User, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
         };
     }
 

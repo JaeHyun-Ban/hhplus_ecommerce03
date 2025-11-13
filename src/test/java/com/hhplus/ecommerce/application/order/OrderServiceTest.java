@@ -32,12 +32,17 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Sort;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
+import org.springframework.data.repository.query.FluentQuery;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -81,69 +86,106 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public Order save(Order order) {
-            if (order.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends Order> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 Long newId = idGenerator.getAndIncrement();
                 Order newOrder = Order.builder()
                         .id(newId)
-                        .orderNumber(order.getOrderNumber())
-                        .user(order.getUser())
-                        .totalAmount(order.getTotalAmount())
-                        .discountAmount(order.getDiscountAmount())
-                        .finalAmount(order.getFinalAmount())
-                        .status(order.getStatus())
-                        .orderedAt(order.getOrderedAt())
-                        .paidAt(order.getPaidAt())
-                        .idempotencyKey(order.getIdempotencyKey())
+                        .orderNumber(entity.getOrderNumber())
+                        .user(entity.getUser())
+                        .totalAmount(entity.getTotalAmount())
+                        .discountAmount(entity.getDiscountAmount())
+                        .finalAmount(entity.getFinalAmount())
+                        .status(entity.getStatus())
+                        .orderedAt(entity.getOrderedAt())
+                        .paidAt(entity.getPaidAt())
+                        .idempotencyKey(entity.getIdempotencyKey())
                         .build();
                 store.put(newId, newOrder);
                 idempotencyStore.put(newOrder.getIdempotencyKey(), newOrder);
                 orderNumberStore.put(newOrder.getOrderNumber(), newOrder);
-                return newOrder;
+                return (S) newOrder;
             }
-            store.put(order.getId(), order);
-            idempotencyStore.put(order.getIdempotencyKey(), order);
-            orderNumberStore.put(order.getOrderNumber(), order);
-            return order;
+            store.put(entity.getId(), entity);
+            idempotencyStore.put(entity.getIdempotencyKey(), entity);
+            orderNumberStore.put(entity.getOrderNumber(), entity);
+            return entity;
         }
 
         @Override
-        public Optional<Order> findById(Long id) {
+        @NonNull
+        public Optional<Order> findById(@NonNull Long id) {
             return Optional.ofNullable(store.get(id));
         }
 
-        @Override
-        public Optional<Order> findByIdWithDetails(Long id) {
+        @NonNull
+        public Optional<Order> findByIdWithDetails(@NonNull Long id) { // Custom method
             return findById(id);
         }
 
         @Override
-        public Optional<Order> findByIdempotencyKey(String idempotencyKey) {
+        @NonNull
+        public Optional<Order> findByIdempotencyKey(@NonNull String idempotencyKey) {
             return Optional.ofNullable(idempotencyStore.get(idempotencyKey));
         }
 
         @Override
-        public Optional<Order> findByOrderNumber(String orderNumber) {
+        @NonNull
+        public Optional<Order> findByOrderNumber(@NonNull String orderNumber) {
             return Optional.ofNullable(orderNumberStore.get(orderNumber));
         }
 
         @Override
-        public Page<Order> findByUserOrderByOrderedAtDesc(User user, Pageable pageable) {
+        @NonNull
+        public Page<Order> findByUserOrderByOrderedAtDesc(@NonNull User user, @NonNull Pageable pageable) {
             List<Order> filtered = store.values().stream()
                     .filter(order -> order.getUser().getId().equals(user.getId()))
                     .sorted(Comparator.comparing(Order::getOrderedAt).reversed())
-                    .skip(pageable.getOffset())
-                    .limit(pageable.getPageSize())
-                    .collect(Collectors.toList());
+                    .toList();
 
-            long total = store.values().stream()
-                    .filter(order -> order.getUser().getId().equals(user.getId()))
-                    .count();
-
-            return new PageImpl<>(filtered, pageable, total);
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), filtered.size());
+            List<Order> pageContent = filtered.subList(start, end);
+            
+            return new PageImpl<>(pageContent, pageable, filtered.size());
         }
 
         @Override
+        @NonNull
+        public Long countOrdersBetween(@NonNull LocalDateTime startOfDay, @NonNull LocalDateTime endOfDay) {
+            return store.values().stream()
+                    .filter(order -> !order.getOrderedAt().isBefore(startOfDay) && order.getOrderedAt().isBefore(endOfDay))
+                    .count();
+        }
+
+        @Override
+        @NonNull
+        public Page<Order> findByUserAndStatus(@NonNull User user, @NonNull OrderStatus status, @NonNull Pageable pageable) {
+            List<Order> filtered = store.values().stream()
+                    .filter(order -> order.getUser().getId().equals(user.getId()))
+                    .filter(order -> order.getStatus() == status)
+                    .sorted(Comparator.comparing(Order::getOrderedAt).reversed())
+                    .toList();
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), filtered.size());
+            List<Order> pageContent = filtered.subList(start, end);
+
+            return new PageImpl<>(pageContent, pageable, filtered.size());
+        }
+
+        @Override
+        @NonNull
+        public List<Order> findByOrderedAtBetween(@NonNull LocalDateTime startDate, @NonNull LocalDateTime endDate) {
+            return store.values().stream()
+                    .filter(order -> !order.getOrderedAt().isBefore(startDate) && order.getOrderedAt().isBefore(endDate))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
         public List<Order> findAll() {
             return new ArrayList<>(store.values());
         }
@@ -155,6 +197,172 @@ class OrderServiceTest {
             orderNumberStore.clear();
         }
 
+        @Override
+        public void delete(@NonNull Order entity) {
+            store.remove(entity.getId());
+            idempotencyStore.remove(entity.getIdempotencyKey());
+            orderNumberStore.remove(entity.getOrderNumber());
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        @NonNull
+        public List<Order> findAllById(@NonNull Iterable<Long> ids) {
+            List<Order> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends Order> entities) {
+            for (Order entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<Order> findAll(@NonNull Sort sort) {
+            return store.values().stream()
+                    .sorted(Comparator.comparing(Order::getId)) // Example sort
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<Order> findAll(@NonNull Pageable pageable) {
+            List<Order> allOrders = new ArrayList<>(store.values());
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allOrders.size());
+            List<Order> pageContent = allOrders.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allOrders.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op for in-memory fake
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<Order> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public Order getOne(@NonNull Long id) { // Deprecated, but for compatibility
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public Order getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Order not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public Order getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Order not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        public <S extends Order> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        public <S extends Order> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Order, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeOrderRepository");
+        }
+        
         public void clear() {
             store.clear();
             idempotencyStore.clear();
@@ -171,46 +379,59 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public User save(User user) {
-            if (user.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends User> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 Long newId = idGenerator.getAndIncrement();
                 User newUser = User.builder()
                         .id(newId)
-                        .email(user.getEmail())
-                        .password(user.getPassword())
-                        .name(user.getName())
-                        .balance(user.getBalance())
-                        .role(user.getRole())
-                        .status(user.getStatus())
+                        .email(entity.getEmail())
+                        .password(entity.getPassword())
+                        .name(entity.getName())
+                        .balance(entity.getBalance())
+                        .role(entity.getRole())
+                        .status(entity.getStatus())
                         .build();
                 store.put(newId, newUser);
-                return newUser;
+                return (S) newUser;
             }
-            store.put(user.getId(), user);
-            return user;
+            store.put(entity.getId(), entity);
+            return entity;
         }
 
         @Override
-        public Optional<User> findById(Long id) {
+        @NonNull
+        public Optional<User> findById(@NonNull Long id) {
             return Optional.ofNullable(store.get(id));
         }
 
         @Override
-        public boolean existsByEmail(String email) {
-            return false;
+        public boolean existsByEmail(@NonNull String email) {
+            return store.values().stream()
+                    .anyMatch(user -> user.getEmail().equals(email));
         }
 
         @Override
-        public Optional<User> findByIdWithLock(Long id) {
+        @NonNull
+        public Optional<User> findByEmail(@NonNull String email) {
+            return store.values().stream()
+                    .filter(user -> user.getEmail().equals(email))
+                    .findFirst();
+        }
+
+        @NonNull
+        public Optional<User> findByIdWithLock(@NonNull Long id) { // Custom method
             return findById(id);
         }
 
         @Override
-        public void delete(User user) {
+        public void delete(@NonNull User user) {
             store.remove(user.getId());
         }
 
         @Override
+        @NonNull
         public List<User> findAll() {
             return new ArrayList<>(store.values());
         }
@@ -218,6 +439,165 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        @NonNull
+        public List<User> findAllById(@NonNull Iterable<Long> ids) {
+            List<User> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends User> entities) {
+            for (User entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<User> findAll(@NonNull Sort sort) {
+            return store.values().stream()
+                    .sorted(Comparator.comparing(User::getId))
+                    .toList(); // Use toList() for Java 16+
+        }
+
+        @Override
+        @NonNull
+        public Page<User> findAll(@NonNull Pageable pageable) {
+            List<User> allUsers = new ArrayList<>(store.values());
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allUsers.size());
+            List<User> pageContent = allUsers.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allUsers.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<User> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public User getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public User getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("User not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public User getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("User not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends User> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        public <S extends User> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        public <S extends User> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends User, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserRepository");
         }
 
         public void clear() {
@@ -234,58 +614,94 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public Product save(Product product) {
-            if (product.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends Product> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 Long newId = idGenerator.getAndIncrement();
                 Product newProduct = Product.builder()
                         .id(newId)
-                        .name(product.getName())
-                        .description(product.getDescription())
-                        .price(product.getPrice())
-                        .stock(product.getStock())
-                        .safetyStock(product.getSafetyStock())
-                        .category(product.getCategory())
-                        .status(product.getStatus())
-                        .version(product.getVersion())
+                        .name(entity.getName())
+                        .description(entity.getDescription())
+                        .price(entity.getPrice())
+                        .stock(entity.getStock())
+                        .safetyStock(entity.getSafetyStock())
+                        .category(entity.getCategory())
+                        .status(entity.getStatus())
+                        .version(entity.getVersion())
                         .build();
                 store.put(newId, newProduct);
-                return newProduct;
+                return (S) newProduct;
             }
-            store.put(product.getId(), product);
-            return product;
+            store.put(entity.getId(), entity);
+            return entity;
         }
 
         @Override
-        public Optional<Product> findById(Long id) {
+        @NonNull
+        public Optional<Product> findById(@NonNull Long id) {
             return Optional.ofNullable(store.get(id));
         }
 
         @Override
-        public Page<Product> findAvailableProducts(Pageable pageable) {
-            return Page.empty();
+        @NonNull
+        public Page<Product> findAvailableProducts(@NonNull Pageable pageable) {
+            // Simple implementation for testing
+            List<Product> available = store.values().stream()
+                    .filter(p -> p.getStatus() == ProductStatus.AVAILABLE && p.getStock() > 0)
+                    .sorted(Comparator.comparing(Product::getCreatedAt).reversed())
+                    .toList();
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), available.size());
+            List<Product> pageContent = available.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, available.size());
         }
 
         @Override
-        public Page<Product> findByCategoryId(Long categoryId, Pageable pageable) {
-            return Page.empty();
+        @NonNull
+        public Page<Product> findByCategoryId(@NonNull Long categoryId, @NonNull Pageable pageable) {
+            // Simple implementation for testing
+            List<Product> byCategory = store.values().stream()
+                    .filter(p -> p.getCategory() != null && p.getCategory().getId().equals(categoryId) && p.getStatus() == ProductStatus.AVAILABLE && p.getStock() > 0)
+                    .sorted(Comparator.comparing(Product::getCreatedAt).reversed())
+                    .toList();
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), byCategory.size());
+            List<Product> pageContent = byCategory.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, byCategory.size());
         }
 
-        @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public Optional<Product> findByIdWithLock(Long id) {
+        @NonNull
+        public Optional<Product> findByIdWithLock(@NonNull Long id) { // Custom method
             return findById(id);
         }
 
         @Override
-        public void delete(Product product) {
+        @NonNull
+        public List<Product> findLowStockProducts() {
+            return store.values().stream()
+                    .filter(p -> p.getStock() <= p.getSafetyStock() && p.getStatus() != ProductStatus.DISCONTINUED)
+                    .sorted(Comparator.comparing(Product::getStock))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public List<Product> findByStatus(@NonNull ProductStatus status) {
+            return store.values().stream()
+                    .filter(product -> product.getStatus() == status)
+                    .toList();
+        }
+
+        @Override
+        public void delete(@NonNull Product product) {
             store.remove(product.getId());
         }
 
         @Override
+        @NonNull
         public List<Product> findAll() {
             return new ArrayList<>(store.values());
         }
@@ -293,6 +709,165 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        @NonNull
+        public List<Product> findAllById(@NonNull Iterable<Long> ids) {
+            List<Product> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends Product> entities) {
+            for (Product entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<Product> findAll(@NonNull Sort sort) {
+            return store.values().stream()
+                    .sorted(Comparator.comparing(Product::getId))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<Product> findAll(@NonNull Pageable pageable) {
+            List<Product> allProducts = new ArrayList<>(store.values());
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allProducts.size());
+            List<Product> pageContent = allProducts.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allProducts.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<Product> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public Product getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public Product getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public Product getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        public <S extends Product> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        public <S extends Product> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Product, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeProductRepository");
         }
 
         public void clear() {
@@ -309,46 +884,54 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public Cart save(Cart cart) {
-            if (cart.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends Cart> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 Long newId = idGenerator.getAndIncrement();
                 Cart newCart = Cart.builder()
                         .id(newId)
-                        .user(cart.getUser())
-                        .items(cart.getItems())
-                        .createdAt(cart.getCreatedAt())
-                        .updatedAt(cart.getUpdatedAt())
+                        .user(entity.getUser())
+                        .items(entity.getItems())
                         .build();
                 store.put(newId, newCart);
-                return newCart;
+                return (S) newCart;
             }
-            store.put(cart.getId(), cart);
-            return cart;
+            store.put(entity.getId(), entity);
+            return entity;
         }
 
         @Override
-        public Optional<Cart> findByUser(User user) {
+        @NonNull
+        public Optional<Cart> findByUser(@NonNull User user) {
             return store.values().stream()
                     .filter(cart -> cart.getUser().getId().equals(user.getId()))
                     .findFirst();
         }
 
-        @Override
-        public Optional<Cart> findByUserWithItems(User user) {
+        @NonNull
+        public Optional<Cart> findByUserWithItems(@NonNull User user) { // Custom method
             return findByUser(user);
         }
 
         @Override
-        public Optional<Cart> findById(Long id) {
+        @NonNull
+        public Optional<Cart> findById(@NonNull Long id) {
             return Optional.ofNullable(store.get(id));
         }
 
+        public boolean existsByUserId(@NonNull Long userId) { // Custom method
+            return store.values().stream()
+                    .anyMatch(cart -> cart.getUser().getId().equals(userId));
+        }
+
         @Override
-        public void delete(Cart cart) {
+        public void delete(@NonNull Cart cart) {
             store.remove(cart.getId());
         }
 
         @Override
+        @NonNull
         public List<Cart> findAll() {
             return new ArrayList<>(store.values());
         }
@@ -356,6 +939,165 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        @NonNull
+        public List<Cart> findAllById(@NonNull Iterable<Long> ids) {
+            List<Cart> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends Cart> entities) {
+            for (Cart entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<Cart> findAll(@NonNull Sort sort) {
+            return store.values().stream()
+                    .sorted(Comparator.comparing(Cart::getId))
+                    .toList(); // Use toList() for Java 16+
+        }
+
+        @Override
+        @NonNull
+        public Page<Cart> findAll(@NonNull Pageable pageable) {
+            List<Cart> allCarts = new ArrayList<>(store.values());
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allCarts.size());
+            List<Cart> pageContent = allCarts.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allCarts.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<Cart> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public Cart getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public Cart getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Cart not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public Cart getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("Cart not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        public <S extends Cart> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        public <S extends Cart> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends Cart, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeCartRepository");
         }
 
         public void clear() {
@@ -372,40 +1114,43 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public UserCoupon save(UserCoupon userCoupon) {
-            if (userCoupon.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends UserCoupon> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 UserCoupon newUserCoupon = UserCoupon.builder()
                         .id(idGenerator.getAndIncrement())
-                        .user(userCoupon.getUser())
-                        .coupon(userCoupon.getCoupon())
-                        .status(userCoupon.getStatus())
-                        .issuedAt(userCoupon.getIssuedAt())
-                        .usedAt(userCoupon.getUsedAt())
+                        .user(entity.getUser())
+                        .coupon(entity.getCoupon())
+                        .status(entity.getStatus())
+                        .issuedAt(entity.getIssuedAt())
+                        .usedAt(entity.getUsedAt())
                         .build();
                 store.add(newUserCoupon);
-                return newUserCoupon;
+                return (S) newUserCoupon;
             }
-            store.removeIf(uc -> uc.getId().equals(userCoupon.getId()));
-            store.add(userCoupon);
-            return userCoupon;
+            store.removeIf(uc -> uc.getId().equals(entity.getId()));
+            store.add(entity);
+            return entity;
         }
 
         @Override
-        public Optional<UserCoupon> findById(Long id) {
+        @NonNull
+        public Optional<UserCoupon> findById(@NonNull Long id) {
             return store.stream()
                     .filter(uc -> uc.getId().equals(id))
                     .findFirst();
         }
 
-        @Override
-        public List<UserCoupon> findByUser(User user) {
+        @NonNull
+        public List<UserCoupon> findByUser(@NonNull User user) { // Custom method
             return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
-        @Override
-        public Optional<UserCoupon> findByUserAndCoupon(User user, Coupon coupon) {
+        @NonNull
+        public Optional<UserCoupon> findByUserAndCoupon(@NonNull User user, @NonNull Coupon coupon) { // Custom method
             return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()) &&
                                   uc.getCoupon().getId().equals(coupon.getId()))
@@ -413,14 +1158,52 @@ class OrderServiceTest {
         }
 
         @Override
-        public int countByUserAndCoupon(User user, Coupon coupon) {
-            return (int) store.stream()
+        @NonNull
+        public Long countByUserAndCoupon(@NonNull User user, @NonNull Coupon coupon) { // Custom method
+            return store.stream()
                     .filter(uc -> uc.getUser().getId().equals(user.getId()) &&
                                   uc.getCoupon().getId().equals(coupon.getId()))
                     .count();
         }
 
         @Override
+        @NonNull
+        public List<UserCoupon> findExpiredCoupons(@NonNull LocalDateTime now) { // Custom method
+            return store.stream()
+                    .filter(uc -> uc.getStatus() == UserCouponStatus.ISSUED)
+                    .filter(uc -> uc.getCoupon().getValidUntil().isBefore(now))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public List<UserCoupon> findByUserAndStatus(@NonNull User user, @NonNull UserCouponStatus status) { // Custom method
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .filter(uc -> uc.getStatus() == status)
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public List<UserCoupon> findByUserOrderByIssuedAtDesc(@NonNull User user) { // Custom method
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .sorted(Comparator.comparing(UserCoupon::getIssuedAt).reversed())
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public List<UserCoupon> findAvailableCouponsByUser(@NonNull User user, @NonNull LocalDateTime now) { // Custom method
+            return store.stream()
+                    .filter(uc -> uc.getUser().getId().equals(user.getId()))
+                    .filter(UserCoupon::canUse)
+                    .toList();
+        }
+
+        @Override
+        @NonNull
         public List<UserCoupon> findAll() {
             return new ArrayList<>(store);
         }
@@ -428,6 +1211,170 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        public void delete(@NonNull UserCoupon entity) {
+            store.removeIf(uc -> uc.getId().equals(entity.getId()));
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.stream().anyMatch(uc -> uc.getId().equals(id));
+        }
+
+        @Override
+        @NonNull
+        public List<UserCoupon> findAllById(@NonNull Iterable<Long> ids) {
+            List<UserCoupon> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.removeIf(uc -> uc.getId().equals(id));
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends UserCoupon> entities) {
+            for (UserCoupon entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<UserCoupon> findAll(@NonNull Sort sort) {
+            return store.stream()
+                    .sorted(Comparator.comparing(UserCoupon::getId))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<UserCoupon> findAll(@NonNull Pageable pageable) {
+            List<UserCoupon> allCoupons = new ArrayList<>(store);
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allCoupons.size());
+            List<UserCoupon> pageContent = allCoupons.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allCoupons.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<UserCoupon> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public UserCoupon getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public UserCoupon getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("UserCoupon not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public UserCoupon getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("UserCoupon not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        public <S extends UserCoupon> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        public <S extends UserCoupon> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends UserCoupon, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeUserCouponRepository");
         }
 
         public void clear() {
@@ -444,38 +1391,61 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public BalanceHistory save(BalanceHistory history) {
-            if (history.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends BalanceHistory> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 BalanceHistory newHistory = BalanceHistory.builder()
                         .id(idGenerator.getAndIncrement())
-                        .user(history.getUser())
-                        .type(history.getType())
-                        .amount(history.getAmount())
-                        .balanceBefore(history.getBalanceBefore())
-                        .balanceAfter(history.getBalanceAfter())
-                        .description(history.getDescription())
-                        .createdAt(history.getCreatedAt())
+                        .user(entity.getUser())
+                        .type(entity.getType())
+                        .amount(entity.getAmount())
+                        .balanceBefore(entity.getBalanceBefore())
+                        .balanceAfter(entity.getBalanceAfter())
+                        .description(entity.getDescription())
+                        .createdAt(entity.getCreatedAt())
                         .build();
                 store.add(newHistory);
-                return newHistory;
+                return (S) newHistory;
             }
-            store.add(history);
-            return history;
+            store.add(entity);
+            return entity;
         }
 
         @Override
-        public Page<BalanceHistory> findByUserOrderByCreatedAtDesc(User user, Pageable pageable) {
-            return Page.empty();
+        @NonNull
+        public Page<BalanceHistory> findByUserOrderByCreatedAtDesc(@NonNull User user, @NonNull Pageable pageable) {
+            // Simple implementation for testing
+            List<BalanceHistory> filtered = store.stream()
+                    .filter(h -> h.getUser().getId().equals(user.getId()))
+                    .sorted(Comparator.comparing(BalanceHistory::getCreatedAt).reversed())
+                    .toList();
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), filtered.size());
+            List<BalanceHistory> pageContent = filtered.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, filtered.size());
         }
 
         @Override
-        public Optional<BalanceHistory> findById(Long id) {
+        @NonNull
+        public List<BalanceHistory> findByUserAndCreatedAtBetween(@NonNull User user, @NonNull LocalDateTime startDate, @NonNull LocalDateTime endDate) {
+            return store.stream()
+                    .filter(history -> history.getUser().getId().equals(user.getId()))
+                    .filter(history -> !history.getCreatedAt().isBefore(startDate) && !history.getCreatedAt().isAfter(endDate))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Optional<BalanceHistory> findById(@NonNull Long id) {
             return store.stream()
                     .filter(history -> history.getId().equals(id))
                     .findFirst();
         }
 
         @Override
+        @NonNull
         public List<BalanceHistory> findAll() {
             return new ArrayList<>(store);
         }
@@ -483,6 +1453,170 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        public void delete(@NonNull BalanceHistory entity) {
+            store.removeIf(h -> h.getId().equals(entity.getId()));
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.stream().anyMatch(h -> h.getId().equals(id));
+        }
+
+        @Override
+        @NonNull
+        public List<BalanceHistory> findAllById(@NonNull Iterable<Long> ids) {
+            List<BalanceHistory> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.removeIf(h -> h.getId().equals(id));
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends BalanceHistory> entities) {
+            for (BalanceHistory entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<BalanceHistory> findAll(@NonNull Sort sort) {
+            return store.stream()
+                    .sorted(Comparator.comparing(BalanceHistory::getId))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<BalanceHistory> findAll(@NonNull Pageable pageable) {
+            List<BalanceHistory> allHistories = new ArrayList<>(store);
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allHistories.size());
+            List<BalanceHistory> pageContent = allHistories.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allHistories.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<BalanceHistory> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public BalanceHistory getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public BalanceHistory getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("BalanceHistory not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public BalanceHistory getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("BalanceHistory not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        public <S extends BalanceHistory> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        public <S extends BalanceHistory> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends BalanceHistory, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeBalanceHistoryRepository");
         }
 
         public void clear() {
@@ -499,32 +1633,56 @@ class OrderServiceTest {
         private final AtomicLong idGenerator = new AtomicLong(1);
 
         @Override
-        public StockHistory save(StockHistory history) {
-            if (history.getId() == null) {
+        @NonNull
+        @SuppressWarnings("unchecked")
+        public <S extends StockHistory> S save(@NonNull S entity) {
+            if (entity.getId() == null) {
                 StockHistory newHistory = StockHistory.builder()
                         .id(idGenerator.getAndIncrement())
-                        .product(history.getProduct())
-                        .changeAmount(history.getChangeAmount())
-                        .stockBefore(history.getStockBefore())
-                        .stockAfter(history.getStockAfter())
-                        .reason(history.getReason())
-                        .createdAt(history.getCreatedAt())
+                        .product(entity.getProduct())
+                        .type(entity.getType())
+                        .quantity(entity.getQuantity())
+                        .stockBefore(entity.getStockBefore())
+                        .stockAfter(entity.getStockAfter())
+                        .reason(entity.getReason())
+                        .createdAt(entity.getCreatedAt())
                         .build();
                 store.add(newHistory);
-                return newHistory;
+                return (S) newHistory;
             }
-            store.add(history);
-            return history;
+            store.add(entity);
+            return entity;
         }
 
         @Override
-        public Optional<StockHistory> findById(Long id) {
+        @NonNull
+        public List<StockHistory> findByProductAndCreatedAtBetween(@NonNull Product product, @NonNull LocalDateTime startDate, @NonNull LocalDateTime endDate) {
+            return store.stream()
+                    .filter(history -> history.getProduct().getId().equals(product.getId()))
+                    .filter(history -> !history.getCreatedAt().isBefore(startDate) && !history.getCreatedAt().isAfter(endDate))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<StockHistory> findByProductOrderByCreatedAtDesc(@NonNull Product product, @NonNull Pageable pageable) {
+            List<StockHistory> filtered = store.stream()
+                    .filter(history -> history.getProduct().getId().equals(product.getId()))
+                    .sorted(Comparator.comparing(StockHistory::getCreatedAt).reversed())
+                    .toList();
+            return new PageImpl<>(filtered, pageable, filtered.size());
+        }
+
+        @Override
+        @NonNull
+        public Optional<StockHistory> findById(@NonNull Long id) {
             return store.stream()
                     .filter(history -> history.getId().equals(id))
                     .findFirst();
         }
 
         @Override
+        @NonNull
         public List<StockHistory> findAll() {
             return new ArrayList<>(store);
         }
@@ -532,6 +1690,170 @@ class OrderServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        public void delete(@NonNull StockHistory entity) {
+            store.removeIf(h -> h.getId().equals(entity.getId()));
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> List<S> saveAll(@NonNull Iterable<S> entities) {
+            List<S> result = new ArrayList<>();
+            for (S entity : entities) {
+                result.add(save(entity));
+            }
+            return result;
+        }
+
+        @Override
+        public boolean existsById(@NonNull Long id) {
+            return store.stream().anyMatch(h -> h.getId().equals(id));
+        }
+
+        @Override
+        @NonNull
+        public List<StockHistory> findAllById(@NonNull Iterable<Long> ids) {
+            List<StockHistory> result = new ArrayList<>();
+            for (Long id : ids) {
+                findById(id).ifPresent(result::add);
+            }
+            return result;
+        }
+
+        @Override
+        public long count() {
+            return store.size();
+        }
+
+        @Override
+        public void deleteById(@NonNull Long id) {
+            store.removeIf(h -> h.getId().equals(id));
+        }
+
+        @Override
+        public void deleteAllById(@NonNull Iterable<? extends Long> ids) {
+            for (Long id : ids) {
+                deleteById(id);
+            }
+        }
+
+        @Override
+        public void deleteAll(@NonNull Iterable<? extends StockHistory> entities) {
+            for (StockHistory entity : entities) {
+                delete(entity);
+            }
+        }
+
+        @Override
+        @NonNull
+        public List<StockHistory> findAll(@NonNull Sort sort) {
+            return store.stream()
+                    .sorted(Comparator.comparing(StockHistory::getId))
+                    .toList();
+        }
+
+        @Override
+        @NonNull
+        public Page<StockHistory> findAll(@NonNull Pageable pageable) {
+            List<StockHistory> allHistories = new ArrayList<>(store);
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allHistories.size());
+            List<StockHistory> pageContent = allHistories.subList(start, end);
+            return new PageImpl<>(pageContent, pageable, allHistories.size());
+        }
+
+        @Override
+        public void flush() {
+            // No-op
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> S saveAndFlush(@NonNull S entity) {
+            return save(entity);
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> List<S> saveAllAndFlush(@NonNull Iterable<S> entities) {
+            return saveAll(entities);
+        }
+
+        @Override
+        public void deleteAllInBatch(@NonNull Iterable<StockHistory> entities) {
+            deleteAll(entities);
+        }
+
+        @Override
+        public void deleteAllByIdInBatch(@NonNull Iterable<Long> ids) {
+            deleteAllById(ids);
+        }
+
+        @Override
+        public void deleteAllInBatch() {
+            deleteAll();
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("deprecation")
+        public StockHistory getOne(@NonNull Long id) {
+            return findById(id).orElse(null);
+        }
+
+        @Override
+        @NonNull
+        @SuppressWarnings("deprecation")
+        public StockHistory getById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("StockHistory not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public StockHistory getReferenceById(@NonNull Long id) {
+            return findById(id).orElseThrow(() -> new NoSuchElementException("StockHistory not found with id: " + id));
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> Optional<S> findOne(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> List<S> findAll(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> List<S> findAll(@NonNull Example<S> example, @NonNull Sort sort) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory> Page<S> findAll(@NonNull Example<S> example, @NonNull Pageable pageable) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        public <S extends StockHistory> long count(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        public <S extends StockHistory> boolean exists(@NonNull Example<S> example) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
+        }
+
+        @Override
+        @NonNull
+        public <S extends StockHistory, R> R findBy(@NonNull Example<S> example, @NonNull Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) {
+            throw new UnsupportedOperationException("QueryByExampleExecutor methods are not implemented in FakeStockHistoryRepository");
         }
 
         public void clear() {
@@ -576,27 +1898,38 @@ class OrderServiceTest {
         );
 
         // 인메모리 테스트 데이터 생성
-        testCategory = createCategory(1L, "전자제품");
-        testUser = createUser(1L, "test@test.com", BigDecimal.valueOf(100000));
-        testProduct1 = createProduct(1L, "노트북", BigDecimal.valueOf(50000), 10);
-        testProduct2 = createProduct(2L, "마우스", BigDecimal.valueOf(20000), 20);
+        Category localTestCategory = createCategory(1L, "전자제품");
+        User localTestUser = createUser(1L, "test@test.com", BigDecimal.valueOf(100000));
+        Product localTestProduct1 = createProduct(1L, "노트북", BigDecimal.valueOf(50000), 10, localTestCategory);
+        Product localTestProduct2 = createProduct(2L, "마우스", BigDecimal.valueOf(20000), 20, localTestCategory);
 
         // 장바구니 및 항목 생성
-        testCart = createCart(1L, testUser);
-        cartItem1 = createCartItem(1L, testCart, testProduct1, 2); // 노트북 2개
-        cartItem2 = createCartItem(2L, testCart, testProduct2, 1); // 마우스 1개
-        testCart.getItems().addAll(Arrays.asList(cartItem1, cartItem2));
+        Cart localTestCart = createCart(1L, localTestUser);
+        CartItem localCartItem1 = createCartItem(1L, localTestCart, localTestProduct1, 2); // 노트북 2개
+        CartItem localCartItem2 = createCartItem(2L, localTestCart, localTestProduct2, 1); // 마우스 1개
+        localTestCart.getItems().addAll(Arrays.asList(localCartItem1, localCartItem2));
 
         // 쿠폰 생성
-        testCoupon = createCoupon(1L, "WELCOME10", CouponType.PERCENTAGE, BigDecimal.TEN);
-        testUserCoupon = createUserCoupon(1L, testUser, testCoupon);
+        Coupon localTestCoupon = createCoupon(1L, "WELCOME10", CouponType.PERCENTAGE, BigDecimal.TEN);
+        UserCoupon localTestUserCoupon = createUserCoupon(1L, localTestUser, localTestCoupon);
 
         // 저장소에 저장
-        userRepository.save(testUser);
-        productRepository.save(testProduct1);
-        productRepository.save(testProduct2);
-        cartRepository.save(testCart);
-        userCouponRepository.save(testUserCoupon);
+        userRepository.save(localTestUser);
+        productRepository.save(localTestProduct1);
+        productRepository.save(localTestProduct2);
+        cartRepository.save(localTestCart);
+        userCouponRepository.save(localTestUserCoupon);
+
+        // 필드에 할당
+        this.testUser = localTestUser;
+        this.testCategory = localTestCategory;
+        this.testProduct1 = localTestProduct1;
+        this.testProduct2 = localTestProduct2;
+        this.testCart = localTestCart;
+        this.cartItem1 = localCartItem1;
+        this.cartItem2 = localCartItem2;
+        this.testCoupon = localTestCoupon;
+        this.testUserCoupon = localTestUserCoupon;
     }
 
     @Nested
@@ -866,7 +2199,7 @@ class OrderServiceTest {
             .build();
     }
 
-    private Product createProduct(Long id, String name, BigDecimal price, int stock) {
+    private Product createProduct(Long id, String name, BigDecimal price, int stock, Category category) {
         return Product.builder()
             .id(id)
             .name(name)
@@ -874,7 +2207,7 @@ class OrderServiceTest {
             .price(price)
             .stock(stock)
             .safetyStock(5)
-            .category(testCategory)
+            .category(category)
             .status(ProductStatus.AVAILABLE)
             .version(0L)
             .build();

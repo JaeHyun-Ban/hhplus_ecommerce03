@@ -1,0 +1,20 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create  # 테스트 시작 시 테이블 생성
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+        dialect: org.hibernate.dialect.MySQLDialect
+        show_sql: true
+    show-sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
+    com.hhplus.ecommerce: debug
+    org.testcontainers: info
+    com.github.dockerjava: warn
+    org.springframework.test: debug

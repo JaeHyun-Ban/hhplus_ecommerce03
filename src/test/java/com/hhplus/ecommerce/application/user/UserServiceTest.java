@@ -8,12 +8,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.repository.query.FluentQuery;
 
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.BDDMockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 /**
  * UserService 단위 테스트
@@ -87,6 +90,40 @@ class UserServiceTest {
         public void deleteAll() {
             store.clear();
         }
+
+        @Override
+        public Optional<User> findByEmail(String email) {
+            return store.values().stream()
+                    .filter(u -> u.getEmail().equals(email))
+                    .findFirst();
+        }
+
+        // JpaRepository stub methods
+        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
+        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
+        @Override public User getReferenceById(Long id) { return findById(id).orElse(null); }
+        @Override public void flush() {}
+        @Override @SuppressWarnings("unchecked") public <S extends User> S saveAndFlush(S entity) { return (S) save(entity); }
+        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteAllInBatch(Iterable<User> entities) {}
+        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
+        @Override public void deleteAllInBatch() {}
+        @Override public User getOne(Long id) { return findById(id).orElse(null); }
+        @Override public User getById(Long id) { return findById(id).orElseThrow(); }
+        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
+        @Override public void deleteById(Long id) {}
+        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
+        @Override public void deleteAll(Iterable<? extends User> entities) {}
+        @Override public List<User> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
+        @Override public List<User> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
+        @Override public org.springframework.data.domain.Page<User> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends User> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
+        @Override public <S extends User> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
+        @Override public <S extends User> long count(org.springframework.data.domain.Example<S> example) { return 0; }
+        @Override public <S extends User> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
+        @Override public <S extends User, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
+        @Override public boolean existsById(Long id) { return false; }
+        @Override public long count() { return 0; }
 
         public void clear() {
             store.clear();

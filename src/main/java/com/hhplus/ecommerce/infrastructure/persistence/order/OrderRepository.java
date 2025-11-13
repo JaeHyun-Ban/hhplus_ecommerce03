@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -65,7 +65,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderNumber(@Param("orderNumber") String orderNumber);
 
     /**
-     * 당일 주문 수 조회
+     * 특정 시간 범위의 주문 수 조회
      *
      * Use Case:
      * - UC-012 Step 13.4: 주문 번호 생성 (일련번호 계산)
@@ -74,11 +74,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * - ORD-YYYYMMDD-NNNNNN
      * - NNNNNN: 당일 순번 (000001부터 시작)
      *
-     * @param date 조회 날짜
-     * @return 당일 주문 수
+     * @param startOfDay 시작 시간
+     * @param endOfDay 종료 시간
+     * @return 해당 시간 범위의 주문 수
      */
-    @Query("SELECT COUNT(o) FROM Order o WHERE DATE(o.orderedAt) = :date")
-    Long countTodayOrders(@Param("date") LocalDate date);
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.orderedAt >= :startOfDay AND o.orderedAt < :endOfDay")
+    Long countOrdersBetween(@Param("startOfDay") LocalDateTime startOfDay, @Param("endOfDay") LocalDateTime endOfDay);
 
     /**
      * 사용자별 주문 목록 조회 (최신순, 페이징)
@@ -124,8 +125,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * Fetch Join:
      * - orderItems: 주문 항목
      * - orderItems.product: 상품 정보
-     * - orderCoupons: 쿠폰 정보
-     * - payment: 결제 정보
+     *
+     * Note: Multiple bags (orderItems, orderCoupons) cannot be fetch joined simultaneously
+     * to avoid MultipleBagFetchException. orderCoupons should be fetched separately if needed.
      *
      * @param id 주문 ID
      * @return 주문 엔티티 (Optional)
@@ -133,8 +135,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o " +
            "LEFT JOIN FETCH o.orderItems oi " +
            "LEFT JOIN FETCH oi.product " +
-           "LEFT JOIN FETCH o.orderCoupons " +
-           "LEFT JOIN FETCH o.payment " +
            "WHERE o.id = :id")
     Optional<Order> findByIdWithDetails(@Param("id") Long id);
 
@@ -148,9 +148,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * @param endDate 종료일
      * @return 주문 목록
      */
-    @Query("SELECT o FROM Order o WHERE DATE(o.orderedAt) BETWEEN :startDate AND :endDate")
+    @Query("SELECT o FROM Order o WHERE o.orderedAt >= :startDate AND o.orderedAt < :endDate")
     List<Order> findByOrderedAtBetween(
-        @Param("startDate") LocalDate startDate,
-        @Param("endDate") LocalDate endDate
+        @Param("startDate") LocalDateTime startDate,
+        @Param("endDate") LocalDateTime endDate
     );
 }

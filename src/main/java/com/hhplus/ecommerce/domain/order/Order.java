@@ -13,7 +13,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", indexes = {
+        @Index(name = "idx_user_id", columnList = "user_id"),
+        @Index(name = "idx_order_number", columnList = "orderNumber"),
+        @Index(name = "idx_status", columnList = "status"),
+        @Index(name = "idx_idempotency_key", columnList = "idempotencyKey"),
+        @Index(name = "idx_ordered_at", columnList = "orderedAt")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -110,12 +116,7 @@ public class Order {
 
     // 비즈니스 로직: 주문 아이템 추가 (Product와 수량)
     public void addOrderItem(Product product, Integer quantity) {
-        OrderItem orderItem = OrderItem.builder()
-                .order(this)
-                .product(product)
-                .quantity(quantity)
-                .price(product.getPrice())
-                .build();
+        OrderItem orderItem = OrderItem.of(this, product, quantity);
         this.orderItems.add(orderItem);
     }
 

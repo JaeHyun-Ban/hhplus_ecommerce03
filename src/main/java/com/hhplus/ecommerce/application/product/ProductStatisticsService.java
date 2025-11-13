@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +75,9 @@ public class ProductStatisticsService {
         log.info("[배치] 일일 통계 집계 시작 - 대상 날짜: {}", targetDate);
 
         // Step 1: 전일 결제 완료 주문 조회
-        List<Order> orders = orderRepository.findByOrderedAtBetween(targetDate, targetDate);
+        LocalDateTime startOfDay = targetDate.atStartOfDay();
+        LocalDateTime endOfDay = targetDate.atTime(LocalTime.MAX);
+        List<Order> orders = orderRepository.findByOrderedAtBetween(startOfDay, endOfDay);
 
         if (orders.isEmpty()) {
             log.info("[배치] 집계할 주문이 없습니다 - 날짜: {}", targetDate);

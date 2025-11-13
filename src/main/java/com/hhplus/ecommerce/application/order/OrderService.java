@@ -5,6 +5,7 @@ import com.hhplus.ecommerce.domain.cart.CartItem;
 import com.hhplus.ecommerce.domain.coupon.Coupon;
 import com.hhplus.ecommerce.domain.coupon.UserCoupon;
 import com.hhplus.ecommerce.domain.order.Order;
+import com.hhplus.ecommerce.domain.order.OrderItem;
 import com.hhplus.ecommerce.domain.order.OrderStatus;
 import com.hhplus.ecommerce.domain.product.Product;
 import com.hhplus.ecommerce.domain.product.StockHistory;
@@ -31,9 +32,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 주문 애플리케이션 서비스
@@ -111,8 +114,13 @@ public class OrderService {
     public Order createOrder(Long userId, Long userCouponId, String idempotencyKey) {
         log.info("[UC-012] 주문 생성 시작 - userId: {}, idempotencyKey: {}", userId, idempotencyKey);
 
-        // Step 1: 멱등성 키 중복 확인
-        validateIdempotencyKey(idempotencyKey);
+        // Step 1: 멱등성 키 중복 확인 (멱등성 보장: 기존 주문 반환)
+        Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingOrder.isPresent()) {
+            log.info("[UC-012] 멱등성 키 중복 - 기존 주문 반환: idempotencyKey: {}, orderId: {}",
+                     idempotencyKey, existingOrder.get().getId());
+            return existingOrder.get();
+        }
 
         // Step 2: 사용자 조회 (비관적 락)
         User user = userRepository.findByIdWithLock(userId)
@@ -299,16 +307,6 @@ public class OrderService {
 
     // ========== Private Helper Methods ==========
 
-    /**
-     * UC-012 Step 1: 멱등성 키 중복 확인
-     */
-    private void validateIdempotencyKey(String idempotencyKey) {
-        orderRepository.findByIdempotencyKey(idempotencyKey).ifPresent(existingOrder -> {
-            log.warn("[UC-012] 멱등성 키 중복 - idempotencyKey: {}, orderId: {}",
-                     idempotencyKey, existingOrder.getId());
-            throw new IllegalStateException("이미 처리된 주문입니다");
-        });
-    }
 
     /**
      * UC-012 Step 4: 주문 항목 준비 및 재고 확인
@@ -347,7 +345,7 @@ public class OrderService {
         }
 
         // 쿠폰 사용 가능 여부 확인
-        if (!userCoupon.isUsable()) {
+        if (!userCoupon.canUse()) {
             throw new IllegalArgumentException("사용할 수 없는 쿠폰입니다");
         }
 
@@ -442,7 +440,9 @@ public class OrderService {
         String datePart = now.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
 
         // 당일 주문 수 조회
-        Long todayOrderCount = orderRepository.countTodayOrders(now.toLocalDate());
+        LocalDateTime startOfDay = now.toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay = now.toLocalDate().atTime(LocalTime.MAX);
+        Long todayOrderCount = orderRepository.countOrdersBetween(startOfDay, endOfDay);
         String sequencePart = String.format("%06d", todayOrderCount + 1);
 
         return String.format("ORD-%s-%s", datePart, sequencePart);
@@ -517,7 +517,7 @@ public class OrderService {
      * UC-015: 재고 복구
      */
     private void restoreProductStock(Order order) {
-        for (var orderItem : order.getOrderItems()) {
+        for (OrderItem orderItem : order.getOrderItems()) {
             Product product = productRepository.findByIdWithLock(orderItem.getProduct().getId())
                 .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다"));
 

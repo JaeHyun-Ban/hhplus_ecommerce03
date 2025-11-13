@@ -8,7 +8,11 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "restock_notifications",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "product_id", "status"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "product_id", "status"}),
+        indexes = {
+                @Index(name = "idx_product_status", columnList = "product_id, status"),
+                @Index(name = "idx_user_status", columnList = "user_id, status")
+        })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor

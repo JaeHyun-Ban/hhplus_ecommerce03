@@ -6,7 +6,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "stock_histories")
+@Table(name = "stock_histories", indexes = {
+        @Index(name = "idx_product_id_type", columnList = "product_id, type")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor

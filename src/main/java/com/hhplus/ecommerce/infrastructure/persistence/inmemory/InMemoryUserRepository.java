@@ -117,14 +117,16 @@ public class InMemoryUserRepository implements UserRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends User> S saveAndFlush(S entity) {
-        return save(entity);
+        return (S) save(entity);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) {
         List<S> result = new ArrayList<>();
-        entities.forEach(entity -> result.add(save(entity)));
+        entities.forEach(entity -> result.add((S) save(entity)));
         return result;
     }
 
@@ -159,9 +161,10 @@ public class InMemoryUserRepository implements UserRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends User> List<S> saveAll(Iterable<S> entities) {
         List<S> result = new ArrayList<>();
-        entities.forEach(entity -> result.add(save(entity)));
+        entities.forEach(entity -> result.add((S) save(entity)));
         return result;
     }
 
@@ -180,6 +183,11 @@ public class InMemoryUserRepository implements UserRepository {
     @Override
     public void deleteAll() {
         store.clear();
+    }
+
+    @Override
+    public void deleteAllById(Iterable<? extends Long> ids) {
+        ids.forEach(this::deleteById);
     }
 
     // Unsupported operations (페이징, 정렬, Example 등)
