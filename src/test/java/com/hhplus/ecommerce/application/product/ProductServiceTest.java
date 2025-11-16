@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.application.product;
 
+import com.hhplus.ecommerce.common.FakeRepositorySupport;
 import com.hhplus.ecommerce.domain.product.Category;
 import com.hhplus.ecommerce.domain.product.Product;
 import com.hhplus.ecommerce.domain.product.ProductStatistics;
@@ -40,7 +41,7 @@ class ProductServiceTest {
     /**
      * Fake ProductRepository - 인메모리 Map 사용
      */
-    static class FakeProductRepository implements ProductRepository {
+    static class FakeProductRepository extends FakeRepositorySupport<Product, Long> implements ProductRepository {
         private final Map<Long, Product> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -70,6 +71,42 @@ class ProductServiceTest {
         @Override
         public Optional<Product> findById(Long id) {
             return Optional.ofNullable(store.get(id));
+        }
+
+        @Override
+        public List<Product> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(Product product) {
+            store.remove(product.getId());
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        public List<Product> findAllById(Iterable<Long> ids) {
+            List<Long> idList = new ArrayList<>();
+            ids.forEach(idList::add);
+
+            return idList.stream()
+                    .map(store::get)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
         }
 
         @Override
@@ -105,34 +142,18 @@ class ProductServiceTest {
         }
 
         @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            List<Long> idList = new ArrayList<>();
-            ids.forEach(idList::add);
-
-            return idList.stream()
-                    .map(store::get)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-        }
-
-        @Override
         public Optional<Product> findByIdWithLock(Long id) {
             return findById(id);
         }
 
         @Override
-        public void delete(Product product) {
-            store.remove(product.getId());
+        public List<Product> findLowStockProducts() {
+            return new ArrayList<>();
         }
 
         @Override
-        public List<Product> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
+        public List<Product> findByStatus(ProductStatus status) {
+            return new ArrayList<>();
         }
 
         public void clear() {
@@ -144,19 +165,8 @@ class ProductServiceTest {
     /**
      * Fake ProductStatisticsRepository - 인메모리 List 사용
      */
-    static class FakeProductStatisticsRepository implements ProductStatisticsRepository {
+    static class FakeProductStatisticsRepository extends FakeRepositorySupport<ProductStatistics, Long> implements ProductStatisticsRepository {
         private final List<ProductStatistics> store = new ArrayList<>();
-
-        @Override
-        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
-            return store.stream()
-                    .filter(stat -> !stat.getStatisticsDate().isBefore(startDate) &&
-                                    !stat.getStatisticsDate().isAfter(endDate))
-                    .sorted(Comparator.comparing(ProductStatistics::getSalesCount).reversed())
-                    .limit(limit)
-                    .map(ProductStatistics::getProductId)
-                    .collect(Collectors.toList());
-        }
 
         @Override
         public ProductStatistics save(ProductStatistics statistics) {
@@ -179,6 +189,47 @@ class ProductServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        public void delete(ProductStatistics entity) {
+            store.removeIf(s -> s.getId() != null && s.getId().equals(entity.getId()));
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.removeIf(s -> s.getId() != null && s.getId().equals(id));
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.stream().anyMatch(s -> s.getId() != null && s.getId().equals(id));
+        }
+
+        @Override
+        public List<ProductStatistics> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
+        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
+            return store.stream()
+                    .filter(stat -> !stat.getStatisticsDate().isBefore(startDate) &&
+                                    !stat.getStatisticsDate().isAfter(endDate))
+                    .sorted(Comparator.comparing(ProductStatistics::getSalesCount).reversed())
+                    .limit(limit)
+                    .map(stat -> stat.getProduct().getId())
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public Optional<ProductStatistics> findByProductIdAndDate(Long productId, LocalDate date) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ProductStatistics> findByProductIdAndDateRange(Long productId, LocalDate startDate, LocalDate endDate) {
+            return new ArrayList<>();
         }
 
         public void clear() {
@@ -411,11 +462,13 @@ class ProductServiceTest {
     }
 
     private void createStatistics(Long productId, LocalDate date, int salesCount) {
+        Product product = productRepository.findById(productId).orElse(null);
         ProductStatistics stats = ProductStatistics.builder()
-                .productId(productId)
+                .product(product)
                 .statisticsDate(date)
                 .salesCount(salesCount)
                 .salesAmount(BigDecimal.valueOf(salesCount * 100000))
+                .viewCount(0)
                 .build();
 
         productStatisticsRepository.save(stats);

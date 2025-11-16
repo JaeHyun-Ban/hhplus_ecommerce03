@@ -8,7 +8,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity                             // JPA관리 대상임을 명시(DB테이블과 매핑)
-@Table(name = "order_coupons")      // 엔티티가 매핑될 테이블 이름 설정
+@Table(name = "order_coupons", indexes = {
+        @Index(name = "idx_order_id", columnList = "order_id"),
+        @Index(name = "idx_user_coupon_id", columnList = "user_coupon_id")
+})      // 엔티티가 매핑될 테이블 이름 설정
 @Getter                             // lombok >> 모든 필드의 getter생성
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // 파라미터 없는 생성자 자동 생성
 @AllArgsConstructor                 // 모든 필드를 받는 생성사 자동 생성

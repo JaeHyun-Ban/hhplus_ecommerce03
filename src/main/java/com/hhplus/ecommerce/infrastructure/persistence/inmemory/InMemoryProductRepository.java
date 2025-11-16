@@ -62,10 +62,18 @@ public class InMemoryProductRepository implements ProductRepository {
     }
 
     @Override
-    public List<Product> findByIdIn(List<Long> ids) {
-        return ids.stream()
-                .map(store::get)
-                .filter(Objects::nonNull)
+    public List<Product> findLowStockProducts() {
+        return store.values().stream()
+                .filter(p -> p.getStock() <= p.getSafetyStock())
+                .filter(p -> p.getStatus() != ProductStatus.DISCONTINUED)
+                .sorted(Comparator.comparingInt(Product::getStock))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Product> findByStatus(ProductStatus status) {
+        return store.values().stream()
+                .filter(p -> p.getStatus() == status)
                 .collect(Collectors.toList());
     }
 
@@ -127,14 +135,16 @@ public class InMemoryProductRepository implements ProductRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends Product> S saveAndFlush(S entity) {
-        return save(entity);
+        return (S) save(entity);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends Product> List<S> saveAllAndFlush(Iterable<S> entities) {
         List<S> result = new ArrayList<>();
-        entities.forEach(entity -> result.add(save(entity)));
+        entities.forEach(entity -> result.add((S) save(entity)));
         return result;
     }
 
@@ -169,9 +179,10 @@ public class InMemoryProductRepository implements ProductRepository {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <S extends Product> List<S> saveAll(Iterable<S> entities) {
         List<S> result = new ArrayList<>();
-        entities.forEach(entity -> result.add(save(entity)));
+        entities.forEach(entity -> result.add((S) save(entity)));
         return result;
     }
 
@@ -190,6 +201,11 @@ public class InMemoryProductRepository implements ProductRepository {
     @Override
     public void deleteAll() {
         store.clear();
+    }
+
+    @Override
+    public void deleteAllById(Iterable<? extends Long> ids) {
+        ids.forEach(this::deleteById);
     }
 
     // Unsupported operations

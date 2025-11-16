@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.application.product;
 
+import com.hhplus.ecommerce.common.FakeRepositorySupport;
 import com.hhplus.ecommerce.domain.order.Order;
 import com.hhplus.ecommerce.domain.order.OrderItem;
 import com.hhplus.ecommerce.domain.order.OrderStatus;
@@ -50,7 +51,7 @@ class ProductStatisticsServiceTest {
     /**
      * Fake OrderRepository - 인메모리 List 사용
      */
-    static class FakeOrderRepository implements OrderRepository {
+    static class FakeOrderRepository extends FakeRepositorySupport<Order, Long> implements OrderRepository {
         private final List<Order> store = new ArrayList<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -86,6 +87,36 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
+        public List<Order> findAll() {
+            return new ArrayList<>(store);
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            findById(id).ifPresent(this::delete);
+        }
+
+        @Override
+        public void delete(Order entity) {
+            store.removeIf(o -> o.getId().equals(entity.getId()));
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return findById(id).isPresent();
+        }
+
+        @Override
+        public List<Order> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
         public Optional<Order> findByIdWithDetails(Long id) {
             return findById(id);
         }
@@ -107,23 +138,23 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
-        public List<Order> findByOrderedAtBetween(LocalDate startDate, LocalDate endDate) {
+        public org.springframework.data.domain.Page<Order> findByUserAndStatus(
+                User user, OrderStatus status, org.springframework.data.domain.Pageable pageable) {
+            return org.springframework.data.domain.Page.empty();
+        }
+
+        @Override
+        public Long countOrdersBetween(LocalDateTime startOfDay, LocalDateTime endOfDay) {
             return store.stream()
-                    .filter(order -> {
-                        LocalDate orderDate = order.getOrderedAt().toLocalDate();
-                        return !orderDate.isBefore(startDate) && !orderDate.isAfter(endDate);
-                    })
+                    .filter(order -> !order.getOrderedAt().isBefore(startOfDay) && order.getOrderedAt().isBefore(endOfDay))
+                    .count();
+        }
+
+        @Override
+        public List<Order> findByOrderedAtBetween(LocalDateTime startDate, LocalDateTime endDate) {
+            return store.stream()
+                    .filter(order -> !order.getOrderedAt().isBefore(startDate) && order.getOrderedAt().isBefore(endDate))
                     .toList();
-        }
-
-        @Override
-        public List<Order> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
         }
 
         public void clear() {
@@ -135,7 +166,7 @@ class ProductStatisticsServiceTest {
     /**
      * Fake ProductRepository - 인메모리 Map 사용
      */
-    static class FakeProductRepository implements ProductRepository {
+    static class FakeProductRepository extends FakeRepositorySupport<Product, Long> implements ProductRepository {
         private final Map<Long, Product> store = new HashMap<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -167,6 +198,36 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
+        public List<Product> findAll() {
+            return new ArrayList<>(store.values());
+        }
+
+        @Override
+        public void deleteAll() {
+            store.clear();
+        }
+
+        @Override
+        public void delete(Product product) {
+            store.remove(product.getId());
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.remove(id);
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.containsKey(id);
+        }
+
+        @Override
+        public List<Product> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
         public org.springframework.data.domain.Page<Product> findAvailableProducts(
                 org.springframework.data.domain.Pageable pageable) {
             return org.springframework.data.domain.Page.empty();
@@ -179,28 +240,18 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
         public Optional<Product> findByIdWithLock(Long id) {
             return findById(id);
         }
 
         @Override
-        public void delete(Product product) {
-            store.remove(product.getId());
+        public List<Product> findLowStockProducts() {
+            return new ArrayList<>();
         }
 
         @Override
-        public List<Product> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
+        public List<Product> findByStatus(ProductStatus status) {
+            return new ArrayList<>();
         }
 
         public void clear() {
@@ -212,7 +263,7 @@ class ProductStatisticsServiceTest {
     /**
      * Fake ProductStatisticsRepository - 인메모리 List 사용
      */
-    static class FakeProductStatisticsRepository implements ProductStatisticsRepository {
+    static class FakeProductStatisticsRepository extends FakeRepositorySupport<ProductStatistics, Long> implements ProductStatisticsRepository {
         private final List<ProductStatistics> store = new ArrayList<>();
         private final AtomicLong idGenerator = new AtomicLong(1);
 
@@ -236,19 +287,6 @@ class ProductStatisticsServiceTest {
         }
 
         @Override
-        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public Optional<ProductStatistics> findByProductIdAndDate(Long productId, LocalDate date) {
-            return store.stream()
-                    .filter(stat -> stat.getProduct().getId().equals(productId) &&
-                                    stat.getStatisticsDate().equals(date))
-                    .findFirst();
-        }
-
-        @Override
         public Optional<ProductStatistics> findById(Long id) {
             return store.stream()
                     .filter(stat -> stat.getId().equals(id))
@@ -263,6 +301,48 @@ class ProductStatisticsServiceTest {
         @Override
         public void deleteAll() {
             store.clear();
+        }
+
+        @Override
+        public void delete(ProductStatistics entity) {
+            store.removeIf(s -> s.getId().equals(entity.getId()));
+        }
+
+        @Override
+        public void deleteById(Long id) {
+            store.removeIf(s -> s.getId().equals(id));
+        }
+
+        @Override
+        public boolean existsById(Long id) {
+            return store.stream().anyMatch(s -> s.getId().equals(id));
+        }
+
+        @Override
+        public List<ProductStatistics> findAllById(Iterable<Long> ids) {
+            return new ArrayList<>();
+        }
+
+        @Override
+        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public Optional<ProductStatistics> findByProductIdAndDate(Long productId, LocalDate date) {
+            return store.stream()
+                    .filter(stat -> stat.getProduct().getId().equals(productId) &&
+                                    stat.getStatisticsDate().equals(date))
+                    .findFirst();
+        }
+
+        @Override
+        public List<ProductStatistics> findByProductIdAndDateRange(Long productId, LocalDate startDate, LocalDate endDate) {
+            return store.stream()
+                    .filter(stat -> stat.getProduct().getId().equals(productId) &&
+                                    !stat.getStatisticsDate().isBefore(startDate) &&
+                                    !stat.getStatisticsDate().isAfter(endDate))
+                    .toList();
         }
 
         public void clear() {

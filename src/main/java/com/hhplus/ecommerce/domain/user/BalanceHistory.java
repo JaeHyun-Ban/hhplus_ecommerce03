@@ -7,7 +7,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "balance_histories")
+@Table(name = "balance_histories", indexes = {
+        @Index(name = "idx_user_id_type", columnList = "user_id, type")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
