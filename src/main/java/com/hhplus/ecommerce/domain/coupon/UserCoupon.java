@@ -60,15 +60,15 @@ public class UserCoupon {
 
     // 비즈니스 로직: 쿠폰 사용
     public void use(Order order) {
-        if (this.status != UserCouponStatus.ISSUED) {
-            throw new IllegalStateException("발급된 쿠폰만 사용할 수 있습니다.");
-        }
-        if (!this.coupon.isValid()) {
-            throw new IllegalStateException("유효하지 않은 쿠폰입니다.");
-        }
+        validateUsage();
         this.status = UserCouponStatus.USED;
         this.usedAt = LocalDateTime.now();
         this.usedOrder = order;
+    }
+
+    // 비즈니스 로직: 쿠폰 사용 표시 (Order 없이 사용)
+    public void markAsUsed() {
+        use(null);
     }
 
     // 비즈니스 로직: 쿠폰 만료
@@ -110,15 +110,13 @@ public class UserCoupon {
         return this.status == UserCouponStatus.ISSUED && this.coupon.isValid();
     }
 
-    // 비즈니스 로직: 쿠폰 사용 표시 (별칭 메서드 - use()와 동일)
-    public void markAsUsed() {
+    // 내부 검증 로직
+    private void validateUsage() {
         if (this.status != UserCouponStatus.ISSUED) {
             throw new IllegalStateException("발급된 쿠폰만 사용할 수 있습니다.");
         }
         if (!this.coupon.isValid()) {
             throw new IllegalStateException("유효하지 않은 쿠폰입니다.");
         }
-        this.status = UserCouponStatus.USED;
-        this.usedAt = LocalDateTime.now();
     }
 }

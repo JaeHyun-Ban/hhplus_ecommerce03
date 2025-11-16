@@ -99,7 +99,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 |--------|----------|------|
 | GET | `/products` | 상품 목록 조회 |
 | GET | `/products/{productId}` | 상품 상세 조회 |
-| GET | `/products/popular` | 인기 상품 조회 (Top 5) |
+| GET | `/products/popular` | <br/>인기 상품 조회 (Top 5) |
 | POST | `/products/{productId}/restock-notifications` | 재입고 알림 신청 |
 | GET | `/categories` | 카테고리 목록 |
 

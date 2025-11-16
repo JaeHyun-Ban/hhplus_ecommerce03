@@ -1,7 +1,7 @@
 # E-Commerce Platform
 
-> 항해플러스 백엔드 과정 - 3주차 과제
-> 레이어드 아키텍처 기반 이커머스 플랫폼 구축
+> 항해플러스 백엔드 과정 - 4주차 과제
+> 레이어드 아키텍처 기반 이커머스 플랫폼 구축 + 통합 테스트
 
 [![Java](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)](https://spring.io/projects/spring-boot)
@@ -28,6 +28,7 @@
 
 ### 비즈니스 도메인
 사용자가 상품을 조회하고, 장바구니에 담고, 주문/결제하며, 쿠폰을 발급받아 사용할 수 있는 전자상거래 플랫폼입니다.
+
 
 ### 핵심 요구사항
 - ✅ **레이어드 아키텍처**: 4계층(Presentation, Application, Domain, Infrastructure) 명확히 분리
@@ -88,8 +89,9 @@
 
 ### Testing
 - **Unit Test**: JUnit 5, Mockito
-- **Integration Test**: Spring Boot Test
+- **Integration Test**: Spring Boot Test, TestContainers (MySQL)
 - **Concurrency Test**: ExecutorService
+- **Code Coverage**: JaCoCo
 
 ---
 
@@ -349,36 +351,90 @@ GET    /api/users/{userId}/coupons         # 내 쿠폰 목록
 
 ## 🧪 테스트
 
-### 단위 테스트 실행
+### 테스트 실행
 ```bash
+# 전체 테스트 실행
 ./gradlew test
+
+# 특정 테스트 클래스 실행
+./gradlew test --tests "CouponServiceConcurrencyTest"
 ```
 
-### 테스트 커버리지 확인
+### 테스트 커버리지 확인 (JaCoCo)
 ```bash
+# 테스트 + 커버리지 리포트 생성
 ./gradlew test jacocoTestReport
 
-# 리포트 확인
+# HTML 리포트 확인
 open build/reports/jacoco/test/html/index.html
 ```
 
-### 주요 테스트 케이스
+**커버리지 제외 대상**:
+- Config 클래스
+- DTO, Request, Response 클래스
+- Exception, Enum 클래스
+- Application 메인 클래스
 
-#### 1. OrderServiceTest
-- 주문 생성 플로우 검증
-- 재고 차감 확인
-- 잔액 차감 확인
-- 쿠폰 적용 확인
+### 테스트 전략
 
-#### 2. CouponServiceConcurrencyTest
-- 1000개 스레드 동시 쿠폰 발급
-- 정확히 100개만 발급되는지 검증
-- Race Condition 방지 확인
+#### 1. 단위 테스트 (Unit Test)
+Mock 객체를 사용하여 비즈니스 로직만 독립적으로 테스트
 
-#### 3. BalanceServiceTest
-- 잔액 충전/사용 검증
-- 잔액 부족 시 예외 처리
-- 동시성 제어 확인
+**예시**:
+- `UserServiceTest`: 사용자 생성/조회 로직 검증
+- `BalanceServiceTest`: 잔액 충전/사용 로직 검증
+- `ProductServiceTest`: 상품 조회/재고 관리 로직 검증
+
+#### 2. 통합 테스트 (Integration Test)
+TestContainers를 사용하여 실제 MySQL 컨테이너 환경에서 테스트
+
+**주요 통합 테스트**:
+
+**사용자 & 잔액**:
+- `UserServiceIntegrationTest`: 사용자 생성, 조회, 잔액 관리 통합 테스트
+
+**쿠폰**:
+- `CouponIssueIntegrationTest`: 선착순 쿠폰 발급 검증
+- `CouponQueryIntegrationTest`: 쿠폰 조회 기능 검증
+- `UserCouponIntegrationTest`: 사용자 쿠폰 관리 검증
+
+**장바구니**:
+- `CartItemAddIntegrationTest`: 장바구니 상품 추가 검증
+- `CartItemManageIntegrationTest`: 장바구니 수량 변경/삭제 검증
+- `CartQueryIntegrationTest`: 장바구니 조회 검증
+
+**주문**:
+- `OrderCreateIntegrationTest`: 주문 생성 플로우 검증 (재고/잔액/쿠폰 통합)
+- `OrderQueryIntegrationTest`: 주문 조회 및 목록 검증
+
+#### 3. 동시성 테스트 (Concurrency Test)
+멀티 스레드 환경에서 동시성 제어 검증
+
+**예시**:
+- `CouponServiceConcurrencyTest`
+  - 1000개 스레드 동시 쿠폰 발급
+  - 정확히 100개만 발급되는지 검증
+  - Optimistic Lock + Retry 메커니즘 검증
+  - Race Condition 방지 확인
+
+### TestContainers 설정
+
+통합 테스트는 Docker 기반 MySQL 컨테이너를 자동으로 생성/실행합니다.
+
+```java
+@SpringBootTest
+@Testcontainers
+@Import(TestContainersConfig.class)
+@ActiveProfiles("test")
+class CouponIssueIntegrationTest {
+    // 실제 DB 환경에서 통합 테스트 수행
+}
+```
+
+**특징**:
+- 테스트마다 독립된 DB 컨테이너 생성
+- 테스트 완료 후 자동으로 컨테이너 제거
+- 실제 운영 환경과 동일한 DB 동작 보장
 
 ---
 
@@ -427,12 +483,28 @@ ecommerce/
 │   │       └── data.sql               # 초기 데이터 (Optional)
 │   └── test/
 │       └── java/com/hhplus/ecommerce/
-│           ├── application/           # Service 단위 테스트
-│           │   ├── user/             # BalanceServiceTest, UserServiceTest
-│           │   ├── product/          # ProductServiceTest
-│           │   ├── cart/             # CartServiceTest
-│           │   ├── order/            # OrderServiceTest
-│           │   └── coupon/           # CouponServiceTest, CouponServiceConcurrencyTest
+│           ├── config/                # 테스트 설정
+│           │   └── TestContainersConfig.java
+│           ├── application/           # 서비스 테스트
+│           │   ├── user/
+│           │   │   ├── UserServiceTest.java              # 단위 테스트
+│           │   │   ├── BalanceServiceTest.java           # 단위 테스트
+│           │   │   └── UserServiceIntegrationTest.java   # 통합 테스트
+│           │   ├── product/
+│           │   │   └── ProductServiceTest.java           # 단위 테스트
+│           │   ├── cart/
+│           │   │   ├── CartItemAddIntegrationTest.java   # 통합 테스트
+│           │   │   ├── CartItemManageIntegrationTest.java # 통합 테스트
+│           │   │   └── CartQueryIntegrationTest.java     # 통합 테스트
+│           │   ├── order/
+│           │   │   ├── OrderCreateIntegrationTest.java   # 통합 테스트
+│           │   │   └── OrderQueryIntegrationTest.java    # 통합 테스트
+│           │   └── coupon/
+│           │       ├── CouponServiceConcurrencyTest.java # 동시성 테스트
+│           │       ├── CouponServiceIntegrationTest.java # 통합 테스트
+│           │       ├── CouponIssueIntegrationTest.java   # 통합 테스트
+│           │       ├── CouponQueryIntegrationTest.java   # 통합 테스트
+│           │       └── UserCouponIntegrationTest.java    # 통합 테스트
 │           └── EcommerceApplicationTests.java
 ├── docs/                              # 문서
 │   ├── api-specs/                    # API 명세서
@@ -473,6 +545,12 @@ ecommerce/
 - 인터페이스와 구현체 분리
 - JPA Repository ↔ InMemory Repository 전환 가능
 - 테스트 용이성 확보
+
+### 5. 통합 테스트 전략
+- TestContainers를 활용한 실제 DB 환경 테스트
+- 단위 테스트와 통합 테스트의 명확한 분리
+- 도메인별 테스트 시나리오 설계 (Issue, Query, Manage 등)
+- JaCoCo를 통한 코드 커버리지 측정
 
 ---
 
@@ -530,5 +608,5 @@ GitHub: [@your-username](https://github.com/your-username)
 
 ---
 
-**Last Updated**: 2025-11-07
-**Version**: 1.0.0
+**Last Updated**: 2025-11-16
+**Version**: 1.1.0 (Week 4 - Integration Tests)

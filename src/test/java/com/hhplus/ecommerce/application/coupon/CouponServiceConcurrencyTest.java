@@ -8,9 +8,12 @@ import com.hhplus.ecommerce.domain.product.Category;
 import com.hhplus.ecommerce.domain.user.User;
 import com.hhplus.ecommerce.domain.user.UserRole;
 import com.hhplus.ecommerce.domain.user.UserStatus;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartItemRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.coupon.CouponRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.coupon.UserCouponRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.CategoryRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.product.ProductRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,15 +67,27 @@ class CouponServiceConcurrencyTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @Autowired
+    private CartRepository cartRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
     private Coupon testCoupon;
     private List<User> testUsers;
 
     @BeforeEach
     void setUp() {
-        // 기존 데이터 정리
+        // 기존 데이터 정리 (외래키 제약조건 순서 고려)
+        cartItemRepository.deleteAll();
+        cartRepository.deleteAll();
         userCouponRepository.deleteAll();
         couponRepository.deleteAll();
         userRepository.deleteAll();
+        productRepository.deleteAll();
         categoryRepository.deleteAll();
 
         // 테스트용 카테고리 생성

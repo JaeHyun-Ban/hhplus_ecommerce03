@@ -1,256 +1,71 @@
 package com.hhplus.ecommerce.application.product;
 
-import com.hhplus.ecommerce.common.FakeRepositorySupport;
+import com.hhplus.ecommerce.config.TestContainersConfig;
 import com.hhplus.ecommerce.domain.product.Category;
 import com.hhplus.ecommerce.domain.product.Product;
 import com.hhplus.ecommerce.domain.product.ProductStatistics;
 import com.hhplus.ecommerce.domain.product.ProductStatus;
+import com.hhplus.ecommerce.infrastructure.persistence.product.CategoryRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.ProductRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.ProductStatisticsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * ProductService 단위 테스트
+ * ProductService 통합 테스트 (TestContainers 사용)
  *
  * 테스트 전략:
- * - 인메모리 데이터(Map, List) 사용
- * - Given-When-Then 패턴
+ * - 실제 MySQL 컨테이너를 사용한 통합 테스트
+ * - 상품 조회, 인기 상품 조회 등 실제 DB 기반 테스트
  */
-@DisplayName("ProductService 단위 테스트")
+@SpringBootTest
+@Testcontainers
+@Import(TestContainersConfig.class)
+@ActiveProfiles("test")
+@DisplayName("ProductService 통합 테스트 (TestContainers)")
 class ProductServiceTest {
 
-    private ProductRepository productRepository;
-    private ProductStatisticsRepository productStatisticsRepository;
+    @Autowired
     private ProductService productService;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private ProductStatisticsRepository productStatisticsRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     private Category testCategory;
 
-    /**
-     * Fake ProductRepository - 인메모리 Map 사용
-     */
-    static class FakeProductRepository extends FakeRepositorySupport<Product, Long> implements ProductRepository {
-        private final Map<Long, Product> store = new HashMap<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public Product save(Product product) {
-            if (product.getId() == null) {
-                Long newId = idGenerator.getAndIncrement();
-                Product newProduct = Product.builder()
-                        .id(newId)
-                        .name(product.getName())
-                        .description(product.getDescription())
-                        .price(product.getPrice())
-                        .stock(product.getStock())
-                        .safetyStock(product.getSafetyStock())
-                        .category(product.getCategory())
-                        .status(product.getStatus())
-                        .version(0L)
-                        .build();
-                store.put(newId, newProduct);
-                return newProduct;
-            } else {
-                store.put(product.getId(), product);
-                return product;
-            }
-        }
-
-        @Override
-        public Optional<Product> findById(Long id) {
-            return Optional.ofNullable(store.get(id));
-        }
-
-        @Override
-        public List<Product> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public void delete(Product product) {
-            store.remove(product.getId());
-        }
-
-        @Override
-        public void deleteById(Long id) {
-            store.remove(id);
-        }
-
-        @Override
-        public boolean existsById(Long id) {
-            return store.containsKey(id);
-        }
-
-        @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            List<Long> idList = new ArrayList<>();
-            ids.forEach(idList::add);
-
-            return idList.stream()
-                    .map(store::get)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-        }
-
-        @Override
-        public Page<Product> findAvailableProducts(Pageable pageable) {
-            List<Product> availableProducts = store.values().stream()
-                    .filter(p -> p.getStatus() == ProductStatus.AVAILABLE)
-                    .sorted(Comparator.comparing(Product::getId))
-                    .skip(pageable.getOffset())
-                    .limit(pageable.getPageSize())
-                    .collect(Collectors.toList());
-
-            long total = store.values().stream()
-                    .filter(p -> p.getStatus() == ProductStatus.AVAILABLE)
-                    .count();
-
-            return new PageImpl<>(availableProducts, pageable, total);
-        }
-
-        @Override
-        public Page<Product> findByCategoryId(Long categoryId, Pageable pageable) {
-            List<Product> products = store.values().stream()
-                    .filter(p -> p.getCategory().getId().equals(categoryId))
-                    .sorted(Comparator.comparing(Product::getId))
-                    .skip(pageable.getOffset())
-                    .limit(pageable.getPageSize())
-                    .collect(Collectors.toList());
-
-            long total = store.values().stream()
-                    .filter(p -> p.getCategory().getId().equals(categoryId))
-                    .count();
-
-            return new PageImpl<>(products, pageable, total);
-        }
-
-        @Override
-        public Optional<Product> findByIdWithLock(Long id) {
-            return findById(id);
-        }
-
-        @Override
-        public List<Product> findLowStockProducts() {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public List<Product> findByStatus(ProductStatus status) {
-            return new ArrayList<>();
-        }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
-    /**
-     * Fake ProductStatisticsRepository - 인메모리 List 사용
-     */
-    static class FakeProductStatisticsRepository extends FakeRepositorySupport<ProductStatistics, Long> implements ProductStatisticsRepository {
-        private final List<ProductStatistics> store = new ArrayList<>();
-
-        @Override
-        public ProductStatistics save(ProductStatistics statistics) {
-            store.add(statistics);
-            return statistics;
-        }
-
-        @Override
-        public Optional<ProductStatistics> findById(Long id) {
-            return store.stream()
-                    .filter(stat -> stat.getId() != null && stat.getId().equals(id))
-                    .findFirst();
-        }
-
-        @Override
-        public List<ProductStatistics> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public void delete(ProductStatistics entity) {
-            store.removeIf(s -> s.getId() != null && s.getId().equals(entity.getId()));
-        }
-
-        @Override
-        public void deleteById(Long id) {
-            store.removeIf(s -> s.getId() != null && s.getId().equals(id));
-        }
-
-        @Override
-        public boolean existsById(Long id) {
-            return store.stream().anyMatch(s -> s.getId() != null && s.getId().equals(id));
-        }
-
-        @Override
-        public List<ProductStatistics> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
-            return store.stream()
-                    .filter(stat -> !stat.getStatisticsDate().isBefore(startDate) &&
-                                    !stat.getStatisticsDate().isAfter(endDate))
-                    .sorted(Comparator.comparing(ProductStatistics::getSalesCount).reversed())
-                    .limit(limit)
-                    .map(stat -> stat.getProduct().getId())
-                    .collect(Collectors.toList());
-        }
-
-        @Override
-        public Optional<ProductStatistics> findByProductIdAndDate(Long productId, LocalDate date) {
-            return Optional.empty();
-        }
-
-        @Override
-        public List<ProductStatistics> findByProductIdAndDateRange(Long productId, LocalDate startDate, LocalDate endDate) {
-            return new ArrayList<>();
-        }
-
-        public void clear() {
-            store.clear();
-        }
-    }
-
     @BeforeEach
     void setUp() {
-        FakeProductRepository fakeProductRepo = new FakeProductRepository();
-        FakeProductStatisticsRepository fakeStatsRepo = new FakeProductStatisticsRepository();
-
-        fakeProductRepo.clear();
-        fakeStatsRepo.clear();
-
-        productRepository = fakeProductRepo;
-        productStatisticsRepository = fakeStatsRepo;
-        productService = new ProductService(productRepository, productStatisticsRepository);
+        // 테스트 데이터 초기화
+        productStatisticsRepository.deleteAll();
+        productRepository.deleteAll();
+        categoryRepository.deleteAll();
 
         // 테스트용 카테고리 생성
-        testCategory = createCategory(1L, "전자제품");
+        testCategory = createAndSaveCategory("전자제품", "전자제품 카테고리");
     }
 
     @Nested
@@ -261,9 +76,9 @@ class ProductServiceTest {
         @DisplayName("성공: 판매 가능한 상품 목록 조회")
         void getAvailableProducts_Success() {
             // Given
-            Product product1 = createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            Product product2 = createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
-            Product product3 = createAndSaveProduct("키보드", 80, ProductStatus.AVAILABLE);
+            createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
+            createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE);
+            createAndSaveProduct("키보드", 80, BigDecimal.valueOf(80000), ProductStatus.AVAILABLE);
 
             Pageable pageable = PageRequest.of(0, 10);
 
@@ -273,9 +88,8 @@ class ProductServiceTest {
             // Then
             assertThat(result.getContent()).hasSize(3);
             assertThat(result.getTotalElements()).isEqualTo(3);
-            assertThat(result.getContent().get(0).getName()).isEqualTo("노트북");
-            assertThat(result.getContent().get(1).getName()).isEqualTo("마우스");
-            assertThat(result.getContent().get(2).getName()).isEqualTo("키보드");
+            assertThat(result.getContent()).extracting(Product::getName)
+                    .contains("노트북", "마우스", "키보드");
         }
 
         @Test
@@ -296,9 +110,9 @@ class ProductServiceTest {
         @DisplayName("성공: OUT_OF_STOCK 상품은 제외")
         void getAvailableProducts_ExcludeOutOfStock() {
             // Given
-            createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            createAndSaveProduct("품절상품", 0, ProductStatus.OUT_OF_STOCK);
-            createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
+            createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
+            createAndSaveProduct("품절상품", 0, BigDecimal.valueOf(100000), ProductStatus.OUT_OF_STOCK);
+            createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE);
 
             Pageable pageable = PageRequest.of(0, 10);
 
@@ -310,6 +124,28 @@ class ProductServiceTest {
             assertThat(result.getContent()).extracting(Product::getName)
                     .containsExactlyInAnyOrder("노트북", "마우스");
         }
+
+        @Test
+        @DisplayName("성공: 페이징 처리 확인")
+        void getAvailableProducts_Pagination() {
+            // Given
+            for (int i = 1; i <= 10; i++) {
+                createAndSaveProduct("상품" + i, 100, BigDecimal.valueOf(10000 * i), ProductStatus.AVAILABLE);
+            }
+
+            Pageable firstPage = PageRequest.of(0, 3);
+            Pageable secondPage = PageRequest.of(1, 3);
+
+            // When
+            Page<Product> firstResult = productService.getAvailableProducts(firstPage);
+            Page<Product> secondResult = productService.getAvailableProducts(secondPage);
+
+            // Then
+            assertThat(firstResult.getContent()).hasSize(3);
+            assertThat(secondResult.getContent()).hasSize(3);
+            assertThat(firstResult.getTotalElements()).isEqualTo(10);
+            assertThat(secondResult.getTotalElements()).isEqualTo(10);
+        }
     }
 
     @Nested
@@ -320,18 +156,39 @@ class ProductServiceTest {
         @DisplayName("성공: 특정 카테고리의 상품 목록 조회")
         void getProductsByCategory_Success() {
             // Given
-            Long categoryId = 1L;
-            createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
+            Category electronicsCategory = testCategory;
+            Category furnitureCategory = createAndSaveCategory("가구", "가구 카테고리");
+
+            createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE, electronicsCategory);
+            createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE, electronicsCategory);
+            createAndSaveProduct("책상", 20, BigDecimal.valueOf(200000), ProductStatus.AVAILABLE, furnitureCategory);
 
             Pageable pageable = PageRequest.of(0, 10);
 
             // When
-            Page<Product> result = productService.getProductsByCategory(categoryId, pageable);
+            Page<Product> result = productService.getProductsByCategory(electronicsCategory.getId(), pageable);
 
             // Then
             assertThat(result.getContent()).hasSize(2);
-            assertThat(result.getContent().get(0).getCategory().getId()).isEqualTo(categoryId);
+            assertThat(result.getContent()).extracting(Product::getName)
+                    .containsExactlyInAnyOrder("노트북", "마우스");
+            assertThat(result.getContent()).allMatch(
+                    p -> p.getCategory().getId().equals(electronicsCategory.getId())
+            );
+        }
+
+        @Test
+        @DisplayName("성공: 카테고리에 상품이 없는 경우")
+        void getProductsByCategory_Empty() {
+            // Given
+            Category emptyCategory = createAndSaveCategory("빈카테고리", "상품이 없는 카테고리");
+            Pageable pageable = PageRequest.of(0, 10);
+
+            // When
+            Page<Product> result = productService.getProductsByCategory(emptyCategory.getId(), pageable);
+
+            // Then
+            assertThat(result.getContent()).isEmpty();
         }
     }
 
@@ -343,15 +200,17 @@ class ProductServiceTest {
         @DisplayName("성공: 상품 상세 정보 조회")
         void getProduct_Success() {
             // Given
-            Product saved = createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
+            Product saved = createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
 
             // When
             Product result = productService.getProduct(saved.getId());
 
             // Then
             assertThat(result).isNotNull();
+            assertThat(result.getId()).isEqualTo(saved.getId());
             assertThat(result.getName()).isEqualTo("노트북");
             assertThat(result.getStock()).isEqualTo(50);
+            assertThat(result.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(1500000));
             assertThat(result.getStatus()).isEqualTo(ProductStatus.AVAILABLE);
         }
 
@@ -366,6 +225,7 @@ class ProductServiceTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("상품을 찾을 수 없습니다");
         }
+
     }
 
     @Nested
@@ -376,16 +236,16 @@ class ProductServiceTest {
         @DisplayName("성공: 최근 3일 판매량 기준 TOP 5 조회")
         void getPopularProducts_Success() {
             // Given
-            Product product1 = createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            Product product2 = createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
-            Product product3 = createAndSaveProduct("키보드", 80, ProductStatus.AVAILABLE);
+            Product product1 = createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
+            Product product2 = createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE);
+            Product product3 = createAndSaveProduct("키보드", 80, BigDecimal.valueOf(80000), ProductStatus.AVAILABLE);
 
             LocalDate today = LocalDate.now();
 
             // 통계 데이터 생성 (판매량: 키보드 > 노트북 > 마우스)
-            createStatistics(product3.getId(), today, 100); // 키보드 1위
-            createStatistics(product1.getId(), today, 80);  // 노트북 2위
-            createStatistics(product2.getId(), today, 50);  // 마우스 3위
+            createAndSaveStatistics(product3, today, 100, BigDecimal.valueOf(8000000)); // 키보드 1위
+            createAndSaveStatistics(product1, today, 80, BigDecimal.valueOf(120000000));  // 노트북 2위
+            createAndSaveStatistics(product2, today, 50, BigDecimal.valueOf(2500000));  // 마우스 3위
 
             // When
             List<Product> result = productService.getPopularProducts();
@@ -401,27 +261,28 @@ class ProductServiceTest {
         @DisplayName("성공: 통계 데이터 없을 때 최신 상품 5개 반환")
         void getPopularProducts_NoStatistics() {
             // Given
-            createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
+            createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
+            createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE);
 
             // When
             List<Product> result = productService.getPopularProducts();
 
             // Then
             assertThat(result).hasSize(2);
-            assertThat(result.get(0).getName()).isEqualTo("노트북");
+            assertThat(result).extracting(Product::getName)
+                    .contains("노트북", "마우스");
         }
 
         @Test
         @DisplayName("성공: 인기 상품이 5개 미만일 때")
         void getPopularProducts_LessThan5() {
             // Given
-            Product product1 = createAndSaveProduct("노트북", 50, ProductStatus.AVAILABLE);
-            Product product2 = createAndSaveProduct("마우스", 100, ProductStatus.AVAILABLE);
+            Product product1 = createAndSaveProduct("노트북", 50, BigDecimal.valueOf(1500000), ProductStatus.AVAILABLE);
+            Product product2 = createAndSaveProduct("마우스", 100, BigDecimal.valueOf(50000), ProductStatus.AVAILABLE);
 
             LocalDate today = LocalDate.now();
-            createStatistics(product1.getId(), today, 80);
-            createStatistics(product2.getId(), today, 50);
+            createAndSaveStatistics(product1, today, 80, BigDecimal.valueOf(120000000));
+            createAndSaveStatistics(product2, today, 50, BigDecimal.valueOf(2500000));
 
             // When
             List<Product> result = productService.getPopularProducts();
@@ -431,46 +292,71 @@ class ProductServiceTest {
             assertThat(result.get(0).getId()).isEqualTo(product1.getId());
             assertThat(result.get(1).getId()).isEqualTo(product2.getId());
         }
+
+    }
+
+    @Nested
+    @DisplayName("상품 재고 관련 테스트")
+    class ProductStockTest {
+
+        @Test
+        @DisplayName("성공: 재고 있는 상품만 조회")
+        void getAvailableProducts_OnlyWithStock() {
+            // Given
+            createAndSaveProduct("재고있음", 50, BigDecimal.valueOf(100000), ProductStatus.AVAILABLE);
+            createAndSaveProduct("재고없음", 0, BigDecimal.valueOf(100000), ProductStatus.OUT_OF_STOCK);
+
+            Pageable pageable = PageRequest.of(0, 10);
+
+            // When
+            Page<Product> result = productService.getAvailableProducts(pageable);
+
+            // Then
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).getName()).isEqualTo("재고있음");
+            assertThat(result.getContent().get(0).getStock()).isGreaterThan(0);
+        }
     }
 
     // ========================================
     // 테스트 데이터 생성 헬퍼 메서드
     // ========================================
 
-    private Category createCategory(Long id, String name) {
-        return Category.builder()
-            .id(id)
-            .name(name)
-            .description("테스트 카테고리")
-            .createdAt(LocalDateTime.now())
-            .build();
+    private Category createAndSaveCategory(String name, String description) {
+        Category category = Category.builder()
+                .name(name)
+                .description(description)
+                .createdAt(LocalDateTime.now())
+                .build();
+        return categoryRepository.save(category);
     }
 
-    private Product createAndSaveProduct(String name, int stock, ProductStatus status) {
-        Product product = Product.builder()
-            .name(name)
-            .description(name + " 설명")
-            .price(BigDecimal.valueOf(100000))
-            .stock(stock)
-            .safetyStock(10)
-            .category(testCategory)
-            .status(status)
-            .version(0L)
-            .build();
+    private Product createAndSaveProduct(String name, int stock, BigDecimal price, ProductStatus status) {
+        return createAndSaveProduct(name, stock, price, status, testCategory);
+    }
 
+    private Product createAndSaveProduct(String name, int stock, BigDecimal price, ProductStatus status, Category category) {
+        Product product = Product.builder()
+                .name(name)
+                .description(name + " 상세 설명")
+                .price(price)
+                .stock(stock)
+                .safetyStock(10)
+                .category(category)
+                .status(status)
+                .version(0L)
+                .build();
         return productRepository.save(product);
     }
 
-    private void createStatistics(Long productId, LocalDate date, int salesCount) {
-        Product product = productRepository.findById(productId).orElse(null);
+    private void createAndSaveStatistics(Product product, LocalDate date, int salesCount, BigDecimal salesAmount) {
         ProductStatistics stats = ProductStatistics.builder()
                 .product(product)
                 .statisticsDate(date)
                 .salesCount(salesCount)
-                .salesAmount(BigDecimal.valueOf(salesCount * 100000))
+                .salesAmount(salesAmount)
                 .viewCount(0)
                 .build();
-
         productStatisticsRepository.save(stats);
     }
 }
