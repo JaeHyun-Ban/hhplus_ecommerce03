@@ -95,9 +95,9 @@ public class CouponService {
      */
     @Transactional
     @Retryable(
-        value = OptimisticLockingFailureException.class,  // 이 예외 발생 시 재시도
-        maxAttempts = 3,                                   // 최대 3회 시도
-        backoff = @Backoff(delay = 100)                    // 100ms 대기 후 재시도
+        value = {OptimisticLockingFailureException.class, org.springframework.dao.CannotAcquireLockException.class},
+        maxAttempts = 5,
+        backoff = @Backoff(delay = 50, maxDelay = 200, multiplier = 1.5)
     )
     public UserCoupon issueCoupon(Long userId, Long couponId) {
         log.info("[UC-017] 선착순 쿠폰 발급 시작 - userId: {}, couponId: {}", userId, couponId);

@@ -1,264 +1,76 @@
 package com.hhplus.ecommerce.application.user;
 
+import com.hhplus.ecommerce.config.TestContainersConfig;
 import com.hhplus.ecommerce.domain.user.BalanceHistory;
 import com.hhplus.ecommerce.domain.user.BalanceTransactionType;
 import com.hhplus.ecommerce.domain.user.User;
 import com.hhplus.ecommerce.domain.user.UserRole;
 import com.hhplus.ecommerce.domain.user.UserStatus;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartItemRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.user.BalanceHistoryRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.repository.query.FluentQuery;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * BalanceService 단위 테스트
+ * BalanceService 통합 테스트 (TestContainers 사용)
  *
  * 테스트 전략:
- * - 인메모리 데이터(Map, List) 사용
- * - Given-When-Then 패턴
- * - 잔액 동시성 제어 검증 (비관적 락)
+ * - 실제 MySQL 컨테이너를 사용한 통합 테스트
+ * - JPA, 트랜잭션, DB 제약조건 등 실제 동작 검증
+ * - 비관적 락을 통한 동시성 제어 검증
  */
-@DisplayName("BalanceService 단위 테스트")
+@SpringBootTest
+@Testcontainers
+@Import(TestContainersConfig.class)
+@ActiveProfiles("test")
+@DisplayName("BalanceService 통합 테스트 (TestContainers)")
 class BalanceServiceTest {
 
-    private UserRepository userRepository;
-    private BalanceHistoryRepository balanceHistoryRepository;
+    @Autowired
     private BalanceService balanceService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BalanceHistoryRepository balanceHistoryRepository;
+
+    @Autowired
+    private CartRepository cartRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
 
     private User testUser;
 
-    /**
-     * Fake UserRepository - 인메모리 Map 사용
-     */
-    static class FakeUserRepository implements UserRepository {
-        private final Map<Long, User> store = new HashMap<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public User save(User user) {
-            if (user.getId() == null) {
-                Long newId = idGenerator.getAndIncrement();
-                User newUser = User.builder()
-                        .id(newId)
-                        .email(user.getEmail())
-                        .password(user.getPassword())
-                        .name(user.getName())
-                        .balance(user.getBalance())
-                        .role(user.getRole())
-                        .status(user.getStatus())
-                        .build();
-                store.put(newId, newUser);
-                return newUser;
-            } else {
-                store.put(user.getId(), user);
-                return user;
-            }
-        }
-
-        @Override
-        public Optional<User> findById(Long id) {
-            return Optional.ofNullable(store.get(id));
-        }
-
-        @Override
-        public boolean existsByEmail(String email) {
-            return store.values().stream()
-                    .anyMatch(user -> user.getEmail().equals(email));
-        }
-
-        @Override
-        public Optional<User> findByIdWithLock(Long id) {
-            return findById(id);
-        }
-
-        @Override
-        public void delete(User user) {
-            store.remove(user.getId());
-        }
-
-        @Override
-        public List<User> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public Optional<User> findByEmail(String email) {
-            return store.values().stream()
-                    .filter(u -> u.getEmail().equals(email))
-                    .findFirst();
-        }
-
-        // JpaRepository stub methods
-        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
-        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
-        @Override public User getReferenceById(Long id) { return findById(id).orElse(null); }
-        @Override public void flush() {}
-        @Override @SuppressWarnings("unchecked") public <S extends User> S saveAndFlush(S entity) { return (S) save(entity); }
-        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteAllInBatch(Iterable<User> entities) {}
-        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
-        @Override public void deleteAllInBatch() {}
-        @Override public User getOne(Long id) { return findById(id).orElse(null); }
-        @Override public User getById(Long id) { return findById(id).orElseThrow(); }
-        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteById(Long id) {}
-        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
-        @Override public void deleteAll(Iterable<? extends User> entities) {}
-        @Override public List<User> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
-        @Override public List<User> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
-        @Override public org.springframework.data.domain.Page<User> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends User> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
-        @Override public <S extends User> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends User> long count(org.springframework.data.domain.Example<S> example) { return 0; }
-        @Override public <S extends User> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
-        @Override public <S extends User, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
-        @Override public boolean existsById(Long id) { return false; }
-        @Override public long count() { return 0; }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
-    /**
-     * Fake BalanceHistoryRepository - 인메모리 List 사용
-     */
-    static class FakeBalanceHistoryRepository implements BalanceHistoryRepository {
-        private final List<BalanceHistory> store = new ArrayList<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public BalanceHistory save(BalanceHistory history) {
-            if (history.getId() == null) {
-                BalanceHistory newHistory = BalanceHistory.builder()
-                        .id(idGenerator.getAndIncrement())
-                        .user(history.getUser())
-                        .type(history.getType())
-                        .amount(history.getAmount())
-                        .balanceBefore(history.getBalanceBefore())
-                        .balanceAfter(history.getBalanceAfter())
-                        .description(history.getDescription())
-                        .createdAt(history.getCreatedAt())
-                        .build();
-                store.add(newHistory);
-                return newHistory;
-            } else {
-                store.add(history);
-                return history;
-            }
-        }
-
-        @Override
-        public Page<BalanceHistory> findByUserOrderByCreatedAtDesc(User user, Pageable pageable) {
-            List<BalanceHistory> filtered = store.stream()
-                    .filter(history -> history.getUser().getId().equals(user.getId()))
-                    .sorted(Comparator.comparing(BalanceHistory::getCreatedAt).reversed())
-                    .skip(pageable.getOffset())
-                    .limit(pageable.getPageSize())
-                    .collect(Collectors.toList());
-
-            long total = store.stream()
-                    .filter(history -> history.getUser().getId().equals(user.getId()))
-                    .count();
-
-            return new PageImpl<>(filtered, pageable, total);
-        }
-
-        @Override
-        public Optional<BalanceHistory> findById(Long id) {
-            return store.stream()
-                    .filter(history -> history.getId().equals(id))
-                    .findFirst();
-        }
-
-        @Override
-        public List<BalanceHistory> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public List<BalanceHistory> findByUserAndCreatedAtBetween(User user, LocalDateTime startDate, LocalDateTime endDate) {
-            return store.stream()
-                    .filter(history -> history.getUser().getId().equals(user.getId()))
-                    .filter(history -> !history.getCreatedAt().isBefore(startDate) && !history.getCreatedAt().isAfter(endDate))
-                    .collect(Collectors.toList());
-        }
-
-        // JpaRepository stub methods
-        @Override public <S extends BalanceHistory> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
-        @Override public <S extends BalanceHistory> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
-        @Override public BalanceHistory getReferenceById(Long id) { return findById(id).orElse(null); }
-        @Override public void flush() {}
-        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> S saveAndFlush(S entity) { return (S) save(entity); }
-        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteAllInBatch(Iterable<BalanceHistory> entities) {}
-        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
-        @Override public void deleteAllInBatch() {}
-        @Override public BalanceHistory getOne(Long id) { return findById(id).orElse(null); }
-        @Override public BalanceHistory getById(Long id) { return findById(id).orElseThrow(); }
-        @Override @SuppressWarnings("unchecked") public <S extends BalanceHistory> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteById(Long id) {}
-        @Override public void delete(BalanceHistory entity) {}
-        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
-        @Override public void deleteAll(Iterable<? extends BalanceHistory> entities) {}
-        @Override public List<BalanceHistory> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
-        @Override public List<BalanceHistory> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
-        @Override public org.springframework.data.domain.Page<BalanceHistory> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends BalanceHistory> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
-        @Override public <S extends BalanceHistory> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends BalanceHistory> long count(org.springframework.data.domain.Example<S> example) { return 0; }
-        @Override public <S extends BalanceHistory> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
-        @Override public <S extends BalanceHistory, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
-        @Override public boolean existsById(Long id) { return false; }
-        @Override public long count() { return 0; }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
     @BeforeEach
     void setUp() {
-        FakeUserRepository fakeUserRepo = new FakeUserRepository();
-        FakeBalanceHistoryRepository fakeHistoryRepo = new FakeBalanceHistoryRepository();
+        // 각 테스트 전에 DB 초기화 (외래키 제약조건 순서 고려)
+        cartItemRepository.deleteAll();
+        cartRepository.deleteAll();
+        balanceHistoryRepository.deleteAll();
+        userRepository.deleteAll();
 
-        fakeUserRepo.clear();
-        fakeHistoryRepo.clear();
-
-        userRepository = fakeUserRepo;
-        balanceHistoryRepository = fakeHistoryRepo;
-        balanceService = new BalanceService(userRepository, balanceHistoryRepository);
-
-        // 인메모리 테스트 데이터 생성
-        testUser = createUser(1L, "test@test.com", BigDecimal.valueOf(10000));
-        userRepository.save(testUser);
+        // 테스트용 사용자 생성
+        testUser = createAndSaveUser("test@test.com", BigDecimal.valueOf(10000));
     }
 
     @Nested
@@ -266,7 +78,7 @@ class BalanceServiceTest {
     class ChargeBalanceTest {
 
         @Test
-        @DisplayName("성공: 잔액 충전")
+        @DisplayName("성공: 잔액 충전 및 이력 저장")
         void chargeBalance_Success() {
             // Given
             Long userId = testUser.getId();
@@ -279,15 +91,16 @@ class BalanceServiceTest {
             // Then
             assertThat(result).isEqualByComparingTo(expectedBalance);
 
-            // 인메모리에서 사용자 잔액 확인
+            // 실제 DB에서 사용자 잔액 확인
             User updatedUser = userRepository.findById(userId).orElseThrow();
             assertThat(updatedUser.getBalance()).isEqualByComparingTo(expectedBalance);
 
             // 잔액 이력이 저장되었는지 확인
-            List<BalanceHistory> histories = balanceHistoryRepository.findAll();
-            assertThat(histories).hasSize(1);
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+            assertThat(histories.getContent()).hasSize(1);
 
-            BalanceHistory savedHistory = histories.get(0);
+            BalanceHistory savedHistory = histories.getContent().get(0);
             assertThat(savedHistory.getUser().getId()).isEqualTo(userId);
             assertThat(savedHistory.getType()).isEqualTo(BalanceTransactionType.CHARGE);
             assertThat(savedHistory.getAmount()).isEqualByComparingTo(chargeAmount);
@@ -296,58 +109,40 @@ class BalanceServiceTest {
         }
 
         @Test
-        @DisplayName("실패: 사용자를 찾을 수 없음")
-        void chargeBalance_UserNotFound() {
+        @DisplayName("성공: 여러 번 충전 시 잔액 누적")
+        void chargeBalance_Multiple() {
             // Given
-            Long userId = 999L;
-            BigDecimal chargeAmount = BigDecimal.valueOf(5000);
+            Long userId = testUser.getId();
+            BigDecimal charge1 = BigDecimal.valueOf(1000);
+            BigDecimal charge2 = BigDecimal.valueOf(2000);
+            BigDecimal charge3 = BigDecimal.valueOf(3000);
 
-            // When & Then
-            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("사용자를 찾을 수 없습니다");
+            // When
+            balanceService.chargeBalance(userId, charge1);
+            balanceService.chargeBalance(userId, charge2);
+            BigDecimal finalBalance = balanceService.chargeBalance(userId, charge3);
 
-            // 이력은 저장되지 않아야 함
-            assertThat(balanceHistoryRepository.findAll()).isEmpty();
+            // Then
+            assertThat(finalBalance).isEqualByComparingTo(BigDecimal.valueOf(16000)); // 10000 + 1000 + 2000 + 3000
+
+            // 이력이 3개 저장되었는지 확인
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+            assertThat(histories.getContent()).hasSize(3);
         }
 
         @Test
-        @DisplayName("실패: 충전 금액이 null")
-        void chargeBalance_NullAmount() {
+        @DisplayName("성공: 큰 금액 충전 (오버플로우 없음)")
+        void chargeBalance_LargeAmount() {
             // Given
             Long userId = testUser.getId();
-            BigDecimal chargeAmount = null;
+            BigDecimal largeAmount = BigDecimal.valueOf(1000000);
 
-            // When & Then
-            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("충전 금액은 필수입니다");
-        }
+            // When
+            BigDecimal result = balanceService.chargeBalance(userId, largeAmount);
 
-        @Test
-        @DisplayName("실패: 충전 금액이 0 이하")
-        void chargeBalance_InvalidAmount() {
-            // Given
-            Long userId = testUser.getId();
-            BigDecimal chargeAmount = BigDecimal.ZERO;
-
-            // When & Then
-            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("0보다 커야 합니다");
-        }
-
-        @Test
-        @DisplayName("실패: 충전 금액이 1원 미만")
-        void chargeBalance_LessThanOne() {
-            // Given
-            Long userId = testUser.getId();
-            BigDecimal chargeAmount = BigDecimal.valueOf(0.5);
-
-            // When & Then
-            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("최소 1원 이상이어야 합니다");
+            // Then
+            assertThat(result).isEqualByComparingTo(BigDecimal.valueOf(1010000)); // 10000 + 1000000
         }
 
         @Test
@@ -363,10 +158,79 @@ class BalanceServiceTest {
             // Then
             assertThat(result).isEqualByComparingTo(BigDecimal.valueOf(11000));
 
-            // 인메모리에서는 findByIdWithLock이 실제로 락을 잡지 않지만
-            // 메서드가 정상적으로 호출되어 동작하는지 확인
-            User user = userRepository.findByIdWithLock(userId).orElseThrow();
+            // 실제 DB에서 조회하여 확인
+            User user = userRepository.findById(userId).orElseThrow();
             assertThat(user.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(11000));
+        }
+
+        @Test
+        @DisplayName("실패: 사용자를 찾을 수 없음")
+        void chargeBalance_UserNotFound() {
+            // Given
+            Long nonExistentId = 999L;
+            BigDecimal chargeAmount = BigDecimal.valueOf(5000);
+
+            // When & Then
+            assertThatThrownBy(() -> balanceService.chargeBalance(nonExistentId, chargeAmount))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("사용자를 찾을 수 없습니다");
+
+            // 이력은 저장되지 않아야 함
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+            assertThat(histories.getContent()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("실패: 충전 금액이 null")
+        void chargeBalance_NullAmount() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal chargeAmount = null;
+
+            // When & Then
+            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("충전 금액은 필수입니다");
+        }
+
+        @Test
+        @DisplayName("실패: 충전 금액이 0 이하")
+        void chargeBalance_InvalidAmount() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal chargeAmount = BigDecimal.ZERO;
+
+            // When & Then
+            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("0보다 커야 합니다");
+        }
+
+        @Test
+        @DisplayName("실패: 충전 금액이 1원 미만")
+        void chargeBalance_LessThanOne() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal chargeAmount = BigDecimal.valueOf(0.5);
+
+            // When & Then
+            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("최소 1원 이상이어야 합니다");
+        }
+
+        @Test
+        @DisplayName("실패: 음수 금액 충전 불가")
+        void chargeBalance_NegativeAmount() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal chargeAmount = BigDecimal.valueOf(-1000);
+
+            // When & Then
+            assertThatThrownBy(() -> balanceService.chargeBalance(userId, chargeAmount))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("0보다 커야 합니다");
         }
     }
 
@@ -388,15 +252,42 @@ class BalanceServiceTest {
         }
 
         @Test
+        @DisplayName("성공: 충전 후 잔액 조회")
+        void getBalance_AfterCharge() {
+            // Given
+            Long userId = testUser.getId();
+            balanceService.chargeBalance(userId, BigDecimal.valueOf(5000));
+
+            // When
+            BigDecimal result = balanceService.getBalance(userId);
+
+            // Then
+            assertThat(result).isEqualByComparingTo(BigDecimal.valueOf(15000));
+        }
+
+        @Test
+        @DisplayName("성공: 잔액이 0인 사용자")
+        void getBalance_ZeroBalance() {
+            // Given
+            User userWithZeroBalance = createAndSaveUser("zero@test.com", BigDecimal.ZERO);
+
+            // When
+            BigDecimal result = balanceService.getBalance(userWithZeroBalance.getId());
+
+            // Then
+            assertThat(result).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test
         @DisplayName("실패: 사용자를 찾을 수 없음")
         void getBalance_UserNotFound() {
             // Given
-            Long userId = 999L;
+            Long nonExistentId = 999L;
 
             // When & Then
-            assertThatThrownBy(() -> balanceService.getBalance(userId))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("사용자를 찾을 수 없습니다");
+            assertThatThrownBy(() -> balanceService.getBalance(nonExistentId))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("사용자를 찾을 수 없습니다");
         }
     }
 
@@ -411,12 +302,9 @@ class BalanceServiceTest {
             Long userId = testUser.getId();
             Pageable pageable = PageRequest.of(0, 10);
 
-            // 잔액 이력 생성
-            BalanceHistory history1 = createBalanceHistory(null, testUser, BalanceTransactionType.CHARGE, BigDecimal.valueOf(5000));
-            BalanceHistory history2 = createBalanceHistory(null, testUser, BalanceTransactionType.USE, BigDecimal.valueOf(2000));
-
-            balanceHistoryRepository.save(history1);
-            balanceHistoryRepository.save(history2);
+            // 잔액 충전
+            balanceService.chargeBalance(userId, BigDecimal.valueOf(5000));
+            balanceService.chargeBalance(userId, BigDecimal.valueOf(3000));
 
             // When
             Page<BalanceHistory> result = balanceService.getBalanceHistory(userId, pageable);
@@ -424,19 +312,151 @@ class BalanceServiceTest {
             // Then
             assertThat(result.getContent()).hasSize(2);
             assertThat(result.getTotalElements()).isEqualTo(2);
+
+            // 최신순으로 정렬되어야 함
+            assertThat(result.getContent().get(0).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(3000));
+            assertThat(result.getContent().get(1).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
+        }
+
+        @Test
+        @DisplayName("성공: 이력이 없는 경우 빈 페이지 반환")
+        void getBalanceHistory_Empty() {
+            // Given
+            Long userId = testUser.getId();
+            Pageable pageable = PageRequest.of(0, 10);
+
+            // When
+            Page<BalanceHistory> result = balanceService.getBalanceHistory(userId, pageable);
+
+            // Then
+            assertThat(result.getContent()).isEmpty();
+            assertThat(result.getTotalElements()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("성공: 페이징 처리")
+        void getBalanceHistory_Pagination() {
+            // Given
+            Long userId = testUser.getId();
+
+            // 10번 충전
+            for (int i = 1; i <= 10; i++) {
+                balanceService.chargeBalance(userId, BigDecimal.valueOf(1000 * i));
+            }
+
+            Pageable firstPage = PageRequest.of(0, 3);
+            Pageable secondPage = PageRequest.of(1, 3);
+
+            // When
+            Page<BalanceHistory> firstResult = balanceService.getBalanceHistory(userId, firstPage);
+            Page<BalanceHistory> secondResult = balanceService.getBalanceHistory(userId, secondPage);
+
+            // Then
+            assertThat(firstResult.getContent()).hasSize(3);
+            assertThat(secondResult.getContent()).hasSize(3);
+            assertThat(firstResult.getTotalElements()).isEqualTo(10);
+            assertThat(secondResult.getTotalElements()).isEqualTo(10);
+        }
+
+        @Test
+        @DisplayName("성공: 다른 사용자의 이력은 조회되지 않음")
+        void getBalanceHistory_OnlyOwnHistory() {
+            // Given
+            User anotherUser = createAndSaveUser("another@test.com", BigDecimal.valueOf(5000));
+
+            balanceService.chargeBalance(testUser.getId(), BigDecimal.valueOf(1000));
+            balanceService.chargeBalance(anotherUser.getId(), BigDecimal.valueOf(2000));
+
+            Pageable pageable = PageRequest.of(0, 10);
+
+            // When
+            Page<BalanceHistory> result = balanceService.getBalanceHistory(testUser.getId(), pageable);
+
+            // Then
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).getUser().getId()).isEqualTo(testUser.getId());
         }
 
         @Test
         @DisplayName("실패: 사용자를 찾을 수 없음")
         void getBalanceHistory_UserNotFound() {
             // Given
-            Long userId = 999L;
+            Long nonExistentId = 999L;
             Pageable pageable = PageRequest.of(0, 10);
 
             // When & Then
-            assertThatThrownBy(() -> balanceService.getBalanceHistory(userId, pageable))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("사용자를 찾을 수 없습니다");
+            assertThatThrownBy(() -> balanceService.getBalanceHistory(nonExistentId, pageable))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("사용자를 찾을 수 없습니다");
+        }
+    }
+
+    @Nested
+    @DisplayName("잔액 이력 상세 검증 테스트")
+    class BalanceHistoryDetailTest {
+
+        @Test
+        @DisplayName("성공: 이력의 balanceBefore와 balanceAfter 검증")
+        void balanceHistory_BeforeAfterCheck() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal initialBalance = BigDecimal.valueOf(10000);
+            BigDecimal chargeAmount = BigDecimal.valueOf(5000);
+
+            // When
+            balanceService.chargeBalance(userId, chargeAmount);
+
+            // Then
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+
+            BalanceHistory history = histories.getContent().get(0);
+            assertThat(history.getBalanceBefore()).isEqualByComparingTo(initialBalance);
+            assertThat(history.getBalanceAfter()).isEqualByComparingTo(initialBalance.add(chargeAmount));
+        }
+
+        @Test
+        @DisplayName("성공: 연속 충전 시 이력의 순서 검증")
+        void balanceHistory_ChronologicalOrder() {
+            // Given
+            Long userId = testUser.getId();
+            BigDecimal charge1 = BigDecimal.valueOf(1000);
+            BigDecimal charge2 = BigDecimal.valueOf(2000);
+            BigDecimal charge3 = BigDecimal.valueOf(3000);
+
+            // When
+            balanceService.chargeBalance(userId, charge1);
+            balanceService.chargeBalance(userId, charge2);
+            balanceService.chargeBalance(userId, charge3);
+
+            // Then
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+
+            // 최신순 정렬 확인
+            assertThat(histories.getContent().get(0).getAmount()).isEqualByComparingTo(charge3);
+            assertThat(histories.getContent().get(1).getAmount()).isEqualByComparingTo(charge2);
+            assertThat(histories.getContent().get(2).getAmount()).isEqualByComparingTo(charge1);
+        }
+
+        @Test
+        @DisplayName("성공: 이력에 타임스탬프 저장 확인")
+        void balanceHistory_TimestampCheck() {
+            // Given
+            Long userId = testUser.getId();
+            LocalDateTime before = LocalDateTime.now();
+
+            // When
+            balanceService.chargeBalance(userId, BigDecimal.valueOf(1000));
+
+            // Then
+            LocalDateTime after = LocalDateTime.now();
+            Pageable pageable = PageRequest.of(0, 10);
+            Page<BalanceHistory> histories = balanceHistoryRepository.findByUserOrderByCreatedAtDesc(testUser, pageable);
+
+            BalanceHistory history = histories.getContent().get(0);
+            assertThat(history.getCreatedAt()).isNotNull();
+            assertThat(history.getCreatedAt()).isBetween(before, after);
         }
     }
 
@@ -444,38 +464,15 @@ class BalanceServiceTest {
     // 테스트 데이터 생성 헬퍼 메서드
     // ========================================
 
-    private User createUser(Long id, String email, BigDecimal balance) {
-        return User.builder()
-            .id(id)
-            .email(email)
-            .password("password")
-            .name("테스트사용자")
-            .balance(balance)
-            .role(UserRole.USER)
-            .status(UserStatus.ACTIVE)
-            .build();
-    }
-
-    private BalanceHistory createBalanceHistory(
-            Long id,
-            User user,
-            BalanceTransactionType type,
-            BigDecimal amount) {
-
-        BigDecimal balanceBefore = user.getBalance();
-        BigDecimal balanceAfter = type == BalanceTransactionType.CHARGE
-            ? balanceBefore.add(amount)
-            : balanceBefore.subtract(amount);
-
-        return BalanceHistory.builder()
-            .id(id)
-            .user(user)
-            .type(type)
-            .amount(amount)
-            .balanceBefore(balanceBefore)
-            .balanceAfter(balanceAfter)
-            .description(type + " 테스트")
-            .createdAt(LocalDateTime.now())
-            .build();
+    private User createAndSaveUser(String email, BigDecimal balance) {
+        User user = User.builder()
+                .email(email)
+                .password("password123")
+                .name("테스트사용자")
+                .balance(balance)
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        return userRepository.save(user);
     }
 }

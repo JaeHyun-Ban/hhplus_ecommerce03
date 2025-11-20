@@ -8,9 +8,12 @@ import com.hhplus.ecommerce.domain.product.Category;
 import com.hhplus.ecommerce.domain.user.User;
 import com.hhplus.ecommerce.domain.user.UserRole;
 import com.hhplus.ecommerce.domain.user.UserStatus;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartItemRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.cart.CartRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.coupon.CouponRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.coupon.UserCouponRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.CategoryRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.product.ProductRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,14 +42,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - 재시도 로직 (@Retryable) 검증
  * - 쿠폰 소진 후 추가 발급 불가 검증
  *
- * 참고: H2 의존성이 제거되어 이 테스트는 실행되지 않습니다.
- * MySQL 환경에서 실행하려면 test 프로파일에 MySQL 설정을 추가하거나,
- * @ActiveProfiles("dev")로 변경하고 dev 환경의 MySQL을 사용하세요.
+ * 테스트 환경:
+ * - TestContainers를 사용한 MySQL 8.0 컨테이너
+ * - 실제 DB 환경에서 동시성 제어 검증
  */
 @Slf4j
 @SpringBootTest
+@org.testcontainers.junit.jupiter.Testcontainers
+@org.springframework.context.annotation.Import(com.hhplus.ecommerce.config.TestContainersConfig.class)
 @ActiveProfiles("test")
-@org.junit.jupiter.api.Disabled("H2 의존성 제거로 인해 비활성화. MySQL 환경 설정 후 활성화 필요")
+@DisplayName("선착순 쿠폰 발급 동시성 테스트")
+@org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_CLASS)
 class CouponServiceConcurrencyTest {
 
     @Autowired
@@ -64,24 +71,35 @@ class CouponServiceConcurrencyTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @Autowired
+    private CartRepository cartRepository;
+
+    @Autowired
+    private CartItemRepository cartItemRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
     private Coupon testCoupon;
     private List<User> testUsers;
 
     @BeforeEach
     void setUp() {
-        // 기존 데이터 정리
+        // 기존 데이터 정리 (외래키 제약조건 순서 고려)
+        cartItemRepository.deleteAll();
+        cartRepository.deleteAll();
         userCouponRepository.deleteAll();
         couponRepository.deleteAll();
         userRepository.deleteAll();
+        productRepository.deleteAll();
         categoryRepository.deleteAll();
 
-        // 테스트용 카테고리 생성
+        // 테스트용 카테고리 생성 (고유한 이름으로 생성)
         Category category = Category.builder()
-            .name("테스트 카테고리")
+            .name("쿠폰 테스트 카테고리_" + System.currentTimeMillis())
             .description("동시성 테스트용")
-            .createdAt(LocalDateTime.now())
             .build();
-        categoryRepository.save(category);
+        category = categoryRepository.save(category);
 
         // 선착순 100개 쿠폰 생성
         testCoupon = Coupon.builder()

@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.application.user;
 
+import com.hhplus.ecommerce.config.TestContainersConfig;
 import com.hhplus.ecommerce.domain.user.User;
 import com.hhplus.ecommerce.domain.user.UserRole;
 import com.hhplus.ecommerce.domain.user.UserStatus;
@@ -8,136 +9,40 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.repository.query.FluentQuery;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.BDDMockito.*;
-import static org.mockito.ArgumentMatchers.*;
 
 /**
- * UserService 단위 테스트
+ * UserService 통합 테스트 (TestContainers 사용)
  *
  * 테스트 전략:
- * - 인메모리 데이터(Map)로 Repository 구현
- * - Given-When-Then 패턴
- * - UseCase 기반 테스트
+ * - 실제 MySQL 컨테이너를 사용한 통합 테스트
+ * - 사용자 등록, 조회 등 실제 DB 기반 테스트
  */
-@DisplayName("UserService 단위 테스트")
+@SpringBootTest
+@Testcontainers
+@Import(TestContainersConfig.class)
+@ActiveProfiles("test")
+@DisplayName("UserService 통합 테스트 (TestContainers)")
 class UserServiceTest {
 
-    private UserRepository userRepository;
+    @Autowired
     private UserService userService;
 
-    /**
-     * Fake UserRepository - 인메모리 Map 사용
-     */
-    static class FakeUserRepository implements UserRepository {
-        private final Map<Long, User> store = new HashMap<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public User save(User user) {
-            if (user.getId() == null) {
-                Long newId = idGenerator.getAndIncrement();
-                User newUser = User.builder()
-                        .id(newId)
-                        .email(user.getEmail())
-                        .password(user.getPassword())
-                        .name(user.getName())
-                        .balance(user.getBalance())
-                        .role(user.getRole())
-                        .status(user.getStatus())
-                        .build();
-                store.put(newId, newUser);
-                return newUser;
-            } else {
-                store.put(user.getId(), user);
-                return user;
-            }
-        }
-
-        @Override
-        public Optional<User> findById(Long id) {
-            return Optional.ofNullable(store.get(id));
-        }
-
-        @Override
-        public boolean existsByEmail(String email) {
-            return store.values().stream()
-                    .anyMatch(user -> user.getEmail().equals(email));
-        }
-
-        @Override
-        public Optional<User> findByIdWithLock(Long id) {
-            return findById(id);
-        }
-
-        @Override
-        public void delete(User user) {
-            store.remove(user.getId());
-        }
-
-        @Override
-        public List<User> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public Optional<User> findByEmail(String email) {
-            return store.values().stream()
-                    .filter(u -> u.getEmail().equals(email))
-                    .findFirst();
-        }
-
-        // JpaRepository stub methods
-        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example) { return new ArrayList<>(); }
-        @Override public <S extends User> List<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Sort sort) { return new ArrayList<>(); }
-        @Override public User getReferenceById(Long id) { return findById(id).orElse(null); }
-        @Override public void flush() {}
-        @Override @SuppressWarnings("unchecked") public <S extends User> S saveAndFlush(S entity) { return (S) save(entity); }
-        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAllAndFlush(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteAllInBatch(Iterable<User> entities) {}
-        @Override public void deleteAllByIdInBatch(Iterable<Long> ids) {}
-        @Override public void deleteAllInBatch() {}
-        @Override public User getOne(Long id) { return findById(id).orElse(null); }
-        @Override public User getById(Long id) { return findById(id).orElseThrow(); }
-        @Override @SuppressWarnings("unchecked") public <S extends User> List<S> saveAll(Iterable<S> entities) { List<S> r = new ArrayList<>(); entities.forEach(e -> r.add((S) save(e))); return r; }
-        @Override public void deleteById(Long id) {}
-        @Override public void deleteAllById(Iterable<? extends Long> ids) {}
-        @Override public void deleteAll(Iterable<? extends User> entities) {}
-        @Override public List<User> findAllById(Iterable<Long> ids) { return new ArrayList<>(); }
-        @Override public List<User> findAll(org.springframework.data.domain.Sort sort) { return findAll(); }
-        @Override public org.springframework.data.domain.Page<User> findAll(org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends User> Optional<S> findOne(org.springframework.data.domain.Example<S> example) { return Optional.empty(); }
-        @Override public <S extends User> org.springframework.data.domain.Page<S> findAll(org.springframework.data.domain.Example<S> example, org.springframework.data.domain.Pageable pageable) { return org.springframework.data.domain.Page.empty(); }
-        @Override public <S extends User> long count(org.springframework.data.domain.Example<S> example) { return 0; }
-        @Override public <S extends User> boolean exists(org.springframework.data.domain.Example<S> example) { return false; }
-        @Override public <S extends User, R> R findBy(org.springframework.data.domain.Example<S> example, java.util.function.Function<FluentQuery.FetchableFluentQuery<S>, R> queryFunction) { return null; }
-        @Override public boolean existsById(Long id) { return false; }
-        @Override public long count() { return 0; }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
+    @Autowired
+    private UserRepository userRepository;
 
     @BeforeEach
     void setUp() {
-        FakeUserRepository fakeRepository = new FakeUserRepository();
-        fakeRepository.clear();
-
-        userRepository = fakeRepository;
-        userService = new UserService(userRepository);
+        // 테스트 데이터 초기화
+        userRepository.deleteAll();
     }
 
     @Nested
@@ -157,15 +62,15 @@ class UserServiceTest {
 
             // Then
             assertThat(result).isNotNull();
-            assertThat(result.getId()).isEqualTo(1L);
+            assertThat(result.getId()).isNotNull();
             assertThat(result.getEmail()).isEqualTo(email);
             assertThat(result.getName()).isEqualTo(name);
             assertThat(result.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
             assertThat(result.getRole()).isEqualTo(UserRole.USER);
             assertThat(result.getStatus()).isEqualTo(UserStatus.ACTIVE);
 
-            // 인메모리에서 확인
-            User savedUser = userRepository.findById(1L).orElseThrow();
+            // DB에서 확인
+            User savedUser = userRepository.findById(result.getId()).orElseThrow();
             assertThat(savedUser.getEmail()).isEqualTo(email);
             assertThat(savedUser.getPassword()).isEqualTo(password);
             assertThat(savedUser.getName()).isEqualTo(name);
@@ -183,9 +88,6 @@ class UserServiceTest {
             assertThatThrownBy(() -> userService.registerUser(email, password, name))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("이메일은 필수입니다");
-
-            then(userRepository).should(never()).existsByEmail(any());
-            then(userRepository).should(never()).save(any());
         }
 
         @Test
