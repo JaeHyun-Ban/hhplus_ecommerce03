@@ -32,8 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +68,9 @@ public class OrderService {
     private final BalanceHistoryRepository balanceHistoryRepository;
     private final StockHistoryRepository stockHistoryRepository;
 
+    // Services
+    private final OrderSequenceService orderSequenceService;
+
     /**
      * 주문 생성 및 결제
      *
@@ -82,34 +83,37 @@ public class OrderService {
      * 4. 금액 계산
      * 5. 멱등성 키 확인
      * 6. 트랜잭션 시작:
-     *    - 재고 차감 (낙관적 락)
-     *    - 잔액 차감 (비관적 락)
-     *    - 쿠폰 사용
-     *    - 주문 생성
-     *    - 이력 기록
+     *    - 7-1: 재고 차감 (낙관적 락)
+     *    - 7-2: 잔액 차감 (비관적 락)
+     *    - 7-3: 쿠폰 사용
+     *    - 7-4a: 주문 번호 생성 (비관적 락 + REQUIRES_NEW)
+     *    - 7-4b: 주문 엔티티 생성
+     *    - 7-5: 쿠폰 적용 기록
+     *    - 7-6: 잔액 이력 기록
+     *    - 7-7: 재고 이력 기록
      * 7. 장바구니 비우기
      * 8. 주문 정보 반환
      *
      * 동시성 제어:
-     * - 재고: 낙관적 락 (@Version) + 재시도
+     * - 재고: 낙관적 락 (@Version) + 재시도 (@Retryable, 최대 5회)
      * - 잔액: 비관적 락 (SELECT FOR UPDATE)
+     * - 주문 번호: 비관적 락 (SELECT FOR UPDATE) + REQUIRES_NEW 트랜잭션
      *
      * 멱등성 보장:
-     * - idempotencyKey로 중복 결제 방지
+     * - idempotencyKey로 중복 결제 방지 (네트워크 재시도 대응)
      *
      * @param userId 사용자 ID
      * @param userCouponId 사용할 쿠폰 ID (선택)
      * @param idempotencyKey 멱등성 키 (UUID)
      * @return 생성된 주문
-     * @throws IllegalArgumentException 잘못된 요청
-     * @throws InsufficientStockException 재고 부족
-     * @throws InsufficientBalanceException 잔액 부족
+     * @throws IllegalArgumentException 잘못된 요청 (사용자 없음, 장바구니 비어있음, 쿠폰 오류 등)
+     * @throws IllegalStateException 비즈니스 규칙 위반 (재고 부족, 잔액 부족 등)
      */
     @Transactional
     @Retryable(
-        value = ObjectOptimisticLockingFailureException.class,
-        maxAttempts = 3,
-        backoff = @Backoff(delay = 100)
+        value = {ObjectOptimisticLockingFailureException.class, org.springframework.dao.CannotAcquireLockException.class},
+        maxAttempts = 5,
+        backoff = @Backoff(delay = 50, maxDelay = 200, multiplier = 1.5)
     )
     public Order createOrder(Long userId, Long userCouponId, String idempotencyKey) {
         log.info("[UC-012] 주문 생성 시작 - userId: {}, idempotencyKey: {}", userId, idempotencyKey);
@@ -400,7 +404,7 @@ public class OrderService {
     }
 
     /**
-     * UC-012 Step 7-4: 주문 엔티티 생성
+     * UC-012 Step 7-4b: 주문 엔티티 생성
      */
     private Order createOrderEntity(
             User user,
@@ -408,7 +412,7 @@ public class OrderService {
             OrderAmountCalculation calculation,
             String idempotencyKey) {
 
-        // 주문 번호 생성
+        // 주문 번호 생성 (Step 7-4a)
         String orderNumber = generateOrderNumber();
 
         Order order = Order.builder()
@@ -432,20 +436,20 @@ public class OrderService {
     }
 
     /**
-     * UC-012 Step 7-4: 주문 번호 생성
+     * UC-012 Step 7-4a: 주문 번호 생성
+     *
+     * OrderSequenceService를 통해 동시성 안전한 주문 번호 생성
      * 형식: ORD-YYYYMMDD-NNNNNN
+     *
+     * 동시성 제어:
+     * - REQUIRES_NEW 트랜잭션으로 시퀀스 증가를 즉시 커밋
+     * - 비관적 락 (SELECT FOR UPDATE)으로 동시 접근 제어
+     * - 주문 실패 시에도 시퀀스 번호는 롤백되지 않음 (의도된 동작)
+     *
+     * @return 생성된 주문 번호 (예: ORD-20251120-000001)
      */
     private String generateOrderNumber() {
-        LocalDateTime now = LocalDateTime.now();
-        String datePart = now.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-
-        // 당일 주문 수 조회
-        LocalDateTime startOfDay = now.toLocalDate().atStartOfDay();
-        LocalDateTime endOfDay = now.toLocalDate().atTime(LocalTime.MAX);
-        Long todayOrderCount = orderRepository.countOrdersBetween(startOfDay, endOfDay);
-        String sequencePart = String.format("%06d", todayOrderCount + 1);
-
-        return String.format("ORD-%s-%s", datePart, sequencePart);
+        return orderSequenceService.generateOrderNumber();
     }
 
     /**
