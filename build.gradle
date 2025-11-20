@@ -57,6 +57,7 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
     finalizedBy jacocoTestReport // 테스트 실행 후 JaCoCo 리포트 생성
+    maxParallelForks = 1 // 테스트를 순차적으로 실행 (TestContainers 공유 DB 충돌 방지)
 }
 
 tasks.named('compileTestJava') {
