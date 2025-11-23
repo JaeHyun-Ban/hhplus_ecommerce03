@@ -19,6 +19,18 @@ spring:
 repository:
   type: jpa
 
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+
 springdoc:
   api-docs:
     path: /api-docs
