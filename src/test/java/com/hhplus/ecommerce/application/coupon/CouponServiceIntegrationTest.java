@@ -44,6 +44,8 @@ import static org.assertj.core.api.Assertions.*;
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
 @DisplayName("CouponService 통합 테스트 (TestContainers)")
+@org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_CLASS)
 class CouponServiceIntegrationTest {
 
     @Autowired

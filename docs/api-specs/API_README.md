@@ -1,5 +1,7 @@
 # E-Commerce API Documentation
 
+> **Last Updated**: 2025-11-20
+> **Version**: 3.0 (5주차 - MySQL 단일화, 신규 기능 추가)
 > **프로젝트 전체 정보**: [메인 README](../../README.md) | [문서 가이드](../README.md)
 
 ---
@@ -8,14 +10,13 @@
 
 | 문서 | 설명 | 링크 |
 |-----|------|------|
-| **OpenAPI Spec** | Swagger/OpenAPI 3.0 명세서 | [openapi.yaml](../../../../무제%20폴더%202/assignment/openapi.yaml) |
-| **Swagger Guide** | Swagger UI 사용 가이드 | [SWAGGER_GUIDE.md](SWAGGER_GUIDE.md) |
+| **OpenAPI Spec** | Swagger/OpenAPI 3.0 명세서 | [openapi.yaml](../assignment/openapi.yaml) |
 | **RESTful API** | API 엔드포인트 상세 설명 | [restful-api-endpoints.md](restful-api-endpoints.md) |
-| **Sequence Diagrams** | 비즈니스 플로우 시퀀스 다이어그램 | [sequence-diagrams.md](sequence-diagrams.md) |
-| **Domain Design** | 도메인 및 엔티티 설계 | [domain-design.md](domain-design.md) |
-| **Data Models** | 데이터 모델 명세 | [data-models.md](data-models.md) |
-| **User Stories** | 사용자 스토리 | [user-stories.md](user-stories.md) |
-| **Requirements** | 요구사항 명세 | [requirements.md](requirements.md) |
+| **Swagger Guide** | Swagger UI 사용 가이드 | [../guides/SWAGGER_GUIDE.md](../guides/SWAGGER_GUIDE.md) |
+| **Sequence Diagrams** | 비즈니스 플로우 시퀀스 다이어그램 | [../design/sequence-diagrams-mermaid.md](../design/sequence-diagrams-mermaid.md) |
+| **Domain Design** | 도메인 및 엔티티 설계 | [../design/domain-design.md](../design/domain-design.md) |
+| **User Stories** | 사용자 스토리 | [../requirements/user-stories.md](../requirements/user-stories.md) |
+| **Requirements** | 요구사항 명세 | [../requirements/requirements.md](../requirements/requirements.md) |
 
 ---
 
@@ -46,38 +47,21 @@ Postman → Import → `openapi.yaml` 선택
 ### 기본 정보
 
 - **Base URL (Local):** `http://localhost:8080`
-- **Base URL (Dev):** `https://dev-api.ecommerce.com`
-- **Base URL (Prod):** `https://api.ecommerce.com`
 - **API Version:** v1
-- **Authentication:** JWT Bearer Token
+- **API Prefix:** `/api`
+- **Authentication:** ⚠️ 현재 미구현 (향후 JWT Bearer Token 예정)
+- **Spring Boot Version:** 3.5.7
+- **Java Version:** 17
 
 ### 지원하는 기능
 
 | 도메인 | 기능 | 엔드포인트 |
 |-------|------|----------|
-| **Users** | 사용자 관리, 잔액 충전 | `/users/*` |
-| **Products** | 상품 조회, 인기 상품, 재입고 알림 | `/products/*` |
-| **Cart** | 장바구니 관리 | `/carts/*` |
-| **Orders** | 주문 생성, 결제, 취소 | `/orders/*` |
-| **Coupons** | 쿠폰 발급, 조회 | `/coupons/*` |
-
----
-
-## 🔑 인증
-
-### JWT Bearer Token
-
-모든 API는 JWT 토큰 인증이 필요합니다 (일부 공개 API 제외).
-
-```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-### Swagger UI에서 인증
-
-1. 우측 상단 "Authorize" 버튼 클릭
-2. Bearer Token 입력
-3. Authorize 클릭
+| **Users** | 사용자 관리, 잔액 충전/조회 | `/api/users/*` |
+| **Products** | 상품 조회, 인기 상품 | `/api/products/*` |
+| **Cart** | 장바구니 관리 (추가, 수정, 삭제) | `/api/carts/*` |
+| **Orders** | 주문 생성, 결제, 취소, 조회 | `/api/orders/*` |
+| **Coupons** | 쿠폰 발급, 조회 (선착순) | `/api/coupons/*` |
 
 ---
 
@@ -85,50 +69,50 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 사용자 (Users)
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| POST | `/users` | 사용자 등록 |
-| GET | `/users/{userId}` | 사용자 조회 |
-| GET | `/users/{userId}/balance` | 잔액 조회 |
-| POST | `/users/{userId}/balance/charge` | 잔액 충전 |
-| GET | `/users/{userId}/balance/history` | 잔액 이력 조회 |
+| Method | Endpoint | 설명 | Use Case |
+|--------|----------|------|----------|
+| POST | `/api/users` | 사용자 등록 | UC-002 |
+| GET | `/api/users/{userId}` | 사용자 조회 | UC-003 |
+| GET | `/api/users/{userId}/balance` | 잔액 조회 | UC-004 |
+| POST | `/api/users/{userId}/balance/charge` | 잔액 충전 | UC-001 |
+| GET | `/api/users/{userId}/balance/history` | 잔액 이력 조회 | UC-005 |
 
 ### 상품 (Products)
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| GET | `/products` | 상품 목록 조회 |
-| GET | `/products/{productId}` | 상품 상세 조회 |
-| GET | `/products/popular` | <br/>인기 상품 조회 (Top 5) |
-| POST | `/products/{productId}/restock-notifications` | 재입고 알림 신청 |
-| GET | `/categories` | 카테고리 목록 |
+| Method | Endpoint | 설명 | Use Case |
+|--------|----------|------|----------|
+| GET | `/api/products` | 상품 목록 조회 (페이징) | UC-003 |
+| GET | `/api/products?categoryId={id}` | 카테고리별 상품 조회 | UC-003 |
+| GET | `/api/products/{productId}` | 상품 상세 조회 | UC-004 |
+| GET | `/api/products/popular` | 인기 상품 조회 (Top 5) | UC-006 |
+| GET | `/api/categories` | 카테고리 목록 | - |
 
 ### 장바구니 (Cart)
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| GET | `/carts/{userId}` | 장바구니 조회 |
-| POST | `/carts/{userId}/items` | 상품 추가 |
-| PATCH | `/carts/{userId}/items/{itemId}` | 수량 변경 |
-| DELETE | `/carts/{userId}/items/{itemId}` | 상품 삭제 |
-| DELETE | `/carts/{userId}/items` | 장바구니 비우기 |
+| Method | Endpoint | 설명 | Use Case |
+|--------|----------|------|----------|
+| GET | `/api/carts/{userId}` | 장바구니 조회 | UC-007 |
+| POST | `/api/carts/{userId}/items` | 상품 추가 | UC-008 |
+| PUT | `/api/carts/items/{cartItemId}` | 수량 변경 | UC-009 |
+| DELETE | `/api/carts/items/{cartItemId}` | 상품 삭제 | UC-010 |
+| DELETE | `/api/carts/{userId}/items` | 장바구니 비우기 | UC-011 |
 
 ### 주문 (Orders)
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| POST | `/orders` | 주문 생성 (결제) |
-| GET | `/orders` | 주문 목록 조회 |
-| GET | `/orders/{orderId}` | 주문 상세 조회 |
-| POST | `/orders/{orderId}/cancel` | 주문 취소 |
+| Method | Endpoint | 설명 | Use Case |
+|--------|----------|------|----------|
+| POST | `/api/orders` | 주문 생성 (결제) | UC-012 |
+| GET | `/api/orders/{orderId}` | 주문 상세 조회 | UC-013 |
+| GET | `/api/orders?userId={userId}` | 사용자별 주문 목록 | UC-014 |
+| POST | `/api/orders/{orderId}/cancel` | 주문 취소 | UC-015 |
 
 ### 쿠폰 (Coupons)
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| GET | `/coupons` | 쿠폰 목록 조회 |
-| POST | `/coupons/{couponId}/issue` | 쿠폰 발급 |
-| GET | `/users/{userId}/coupons` | 보유 쿠폰 조회 |
+| Method | Endpoint | 설명 | Use Case |
+|--------|----------|------|----------|
+| GET | `/api/coupons` | 발급 가능한 쿠폰 목록 | UC-018 |
+| POST | `/api/coupons/{couponId}/issue` | 쿠폰 발급 (선착순) | UC-017 |
+| GET | `/api/users/{userId}/coupons` | 보유 쿠폰 조회 | UC-019 |
 
 ---
 
@@ -137,7 +121,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### 1. 잔액 충전
 
 ```bash
-curl -X POST 'http://localhost:8080/users/1/balance/charge' \
+curl -X POST 'http://localhost:8080/api/users/1/balance/charge' \
   -H 'Content-Type: application/json' \
   -d '{
     "amount": 10000
@@ -147,22 +131,20 @@ curl -X POST 'http://localhost:8080/users/1/balance/charge' \
 **응답:**
 ```json
 {
-  "success": true,
-  "data": {
-    "userId": 1,
-    "transactionType": "CHARGE",
-    "amount": 10000,
-    "balanceBefore": 50000,
-    "balanceAfter": 60000,
-    "createdAt": "2025-10-28T12:30:00"
-  }
+  "id": 1,
+  "userId": 1,
+  "transactionType": "CHARGE",
+  "amount": 10000,
+  "balanceBefore": 50000,
+  "balanceAfter": 60000,
+  "createdAt": "2025-11-16T12:30:00"
 }
 ```
 
 ### 2. 장바구니에 상품 추가
 
 ```bash
-curl -X POST 'http://localhost:8080/carts/1/items' \
+curl -X POST 'http://localhost:8080/api/carts/1/items' \
   -H 'Content-Type: application/json' \
   -d '{
     "productId": 1,
@@ -170,39 +152,43 @@ curl -X POST 'http://localhost:8080/carts/1/items' \
   }'
 ```
 
+**응답 (201 Created):**
+```json
+{
+  "id": 1,
+  "productId": 1,
+  "productName": "iPhone 15 Pro",
+  "price": 1500000,
+  "quantity": 2,
+  "totalPrice": 3000000
+}
+```
+
 ### 3. 주문 생성 (결제)
 
 ```bash
-curl -X POST 'http://localhost:8080/orders' \
+curl -X POST 'http://localhost:8080/api/orders' \
   -H 'Content-Type: application/json' \
   -d '{
     "userId": 1,
-    "items": [
-      {
-        "productId": 1,
-        "quantity": 2
-      }
-    ],
-    "userCouponIds": [1],
-    "idempotencyKey": "order-20251028-123456"
+    "userCouponId": 1,
+    "idempotencyKey": "order-20251116-123456"
   }'
 ```
 
-**응답:**
+**응답 (201 Created):**
 ```json
 {
-  "success": true,
-  "data": {
-    "orderId": 1,
-    "orderNumber": "ORD-20251028-000001",
-    "userId": 1,
-    "totalAmount": 20000,
-    "discountAmount": 2000,
-    "finalAmount": 18000,
-    "status": "PAID",
-    "orderedAt": "2025-10-28T12:00:00",
-    "paidAt": "2025-10-28T12:00:05"
-  }
+  "id": 1,
+  "orderNumber": "ORD-20251116-000001",
+  "userId": 1,
+  "items": [...],
+  "totalAmount": 3000000,
+  "discountAmount": 300000,
+  "finalAmount": 2700000,
+  "status": "PAID",
+  "createdAt": "2025-11-16T12:00:00",
+  "paidAt": "2025-11-16T12:00:05"
 }
 ```
 
@@ -214,27 +200,29 @@ curl -X POST 'http://localhost:8080/orders' \
 
 ```
 1. 사용자가 장바구니에 상품 추가
-   POST /carts/{userId}/items
+   POST /api/carts/{userId}/items
 
 2. 장바구니 확인
-   GET /carts/{userId}
+   GET /api/carts/{userId}
 
 3. 쿠폰 조회 (선택)
-   GET /users/{userId}/coupons
+   GET /api/users/{userId}/coupons
 
 4. 주문 생성 (결제)
-   POST /orders
-   - 재고 차감
-   - 잔액 차감
-   - 쿠폰 사용
-   - 주문 생성
-   - 외부 시스템 연동 (비동기)
+   POST /api/orders
+   ① 장바구니 조회
+   ② 재고 검증 및 차감 (Optimistic Lock)
+   ③ 쿠폰 검증 및 할인 계산
+   ④ 잔액 검증 및 차감 (Pessimistic Lock)
+   ⑤ 주문 생성 (멱등성 키 체크)
+   ⑥ 외부 시스템 연동 (비동기)
+   ⑦ 장바구니 비우기
 
 5. 주문 확인
-   GET /orders/{orderId}
+   GET /api/orders/{orderId}
 ```
 
-상세한 시퀀스 다이어그램은 [sequence-diagrams.md](sequence-diagrams.md) 참조
+상세한 시퀀스 다이어그램은 [sequence-diagrams-mermaid.md](../design/sequence-diagrams-mermaid.md) 참조
 
 ---
 
@@ -244,17 +232,11 @@ curl -X POST 'http://localhost:8080/orders' \
 
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "PRODUCT_OUT_OF_STOCK",
-    "message": "상품의 재고가 부족합니다.",
-    "details": {
-      "productId": 1,
-      "requestedQuantity": 10,
-      "availableStock": 5
-    }
-  },
-  "timestamp": "2025-10-28T12:00:00"
+  "timestamp": "2025-11-16T12:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "상품의 재고가 부족합니다.",
+  "path": "/api/orders"
 }
 ```
 
@@ -285,8 +267,8 @@ curl -X POST 'http://localhost:8080/orders' \
 ```json
 {
   "userId": 1,
-  "items": [...],
-  "idempotencyKey": "order-20251028-123456"  // 고유한 키
+  "userCouponId": 1,
+  "idempotencyKey": "order-20251116-123456"  // 고유한 키
 }
 ```
 
@@ -294,36 +276,42 @@ curl -X POST 'http://localhost:8080/orders' \
 
 ### 2. 동시성 제어
 
-- **재고 관리**: Optimistic Lock (@Version)
-- **쿠폰 발급**: Pessimistic Lock (SELECT FOR UPDATE)
-- **잔액 관리**: Pessimistic Lock
+| 도메인 | Lock 방식 | 이유 |
+|--------|----------|------|
+| **재고 관리** (Product) | Optimistic Lock (@Version) | 충돌 시 재시도, 성능 우선 |
+| **쿠폰 발급** (Coupon) | Optimistic Lock (@Version) | 선착순 정확성, 높은 동시성 |
+| **잔액 관리** (User) | Pessimistic Lock (SELECT FOR UPDATE) | 강한 일관성 필요 |
+| **주문 번호 생성** (OrderSequence) | Pessimistic Lock (SELECT FOR UPDATE) | 주문 번호 중복 방지 |
+| **주문 중복 방지** (Order) | 멱등성 키 (Idempotency Key) | 중복 결제 방지 |
 
 ### 3. 비동기 외부 연동
 
 주문 생성 후 외부 시스템 전송은 비동기로 처리됩니다.
-- 주문은 정상 완료
-- 외부 전송 실패 시 재시도
-- 최대 재시도 초과 시 Dead Letter Queue
+- **주문 완료**: 즉시 응답 (200 OK)
+- **외부 전송**: 비동기 처리 (@Async)
+- **실패 시**: 재시도 로직 (최대 3회)
+- **영속화**: OutboundEvent 테이블에 저장
 
 ### 4. 페이징
 
-목록 조회 API는 페이징을 지원합니다.
+목록 조회 API는 Spring Data JPA의 `Pageable`을 사용합니다.
 
-```
-GET /products?page=0&size=20
+```bash
+GET /api/products?page=0&size=20&sort=price,desc
 ```
 
-**응답:**
+**응답 (Page<Product>):**
 ```json
 {
-  "success": true,
-  "data": {
-    "content": [...],
-    "page": 0,
-    "size": 20,
-    "totalElements": 100,
-    "totalPages": 5
-  }
+  "content": [...],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 20
+  },
+  "totalElements": 100,
+  "totalPages": 5,
+  "last": false,
+  "first": true
 }
 ```
 
@@ -331,24 +319,42 @@ GET /products?page=0&size=20
 
 ## 🧪 테스트 방법
 
-### 1. Swagger UI
+### 1. Swagger UI (권장)
 ```
 http://localhost:8080/swagger-ui.html
 ```
+- 모든 API를 브라우저에서 직접 테스트 가능
+- Request/Response 스키마 자동 표시
 
 ### 2. cURL
 ```bash
-curl -X GET 'http://localhost:8080/products'
+# 상품 목록 조회
+curl -X GET 'http://localhost:8080/api/products'
+
+# 잔액 충전
+curl -X POST 'http://localhost:8080/api/users/1/balance/charge' \
+  -H 'Content-Type: application/json' \
+  -d '{"amount": 10000}'
 ```
 
 ### 3. HTTPie
 ```bash
-http GET http://localhost:8080/products
+http GET http://localhost:8080/api/products
+http POST http://localhost:8080/api/users/1/balance/charge amount:=10000
 ```
 
 ### 4. Postman
 - Import → `openapi.yaml` 선택
 - Collection 자동 생성
+
+### 5. 통합 테스트 (TestContainers)
+```bash
+./gradlew test
+```
+- 260개 테스트 케이스 (242개 통과, 18개 스킵)
+- MySQL 8.0 컨테이너 사용 (TestContainers)
+- JaCoCo 코드 커버리지 ~85%
+- 동시성 테스트 포함 (잔액, 재고, 쿠폰)
 
 ---
 
@@ -357,12 +363,14 @@ http GET http://localhost:8080/products
 ### 주요 엔티티
 
 - **User**: 사용자 (id, email, name, balance, role, status)
-- **Product**: 상품 (id, name, price, stock, category, status)
+- **Product**: 상품 (id, name, price, stock, category, status, version)
 - **Cart**: 장바구니 (id, userId, items)
 - **Order**: 주문 (id, orderNumber, userId, items, totalAmount, status)
-- **Coupon**: 쿠폰 (id, code, name, type, discountValue)
+- **OrderSequence**: 주문 번호 시퀀스 (orderDate, sequence) - ORD-YYYYMMDD-NNNNNN 생성
+- **Payment**: 결제 (id, orderId, amount, method, status)
+- **Coupon**: 쿠폰 (id, code, name, type, discountValue, version)
 
-상세한 데이터 모델은 [domain-design.md](domain-design.md) 참조
+상세한 데이터 모델은 [domain-design.md](../design/domain-design.md) 참조
 
 ---
 
@@ -370,20 +378,23 @@ http GET http://localhost:8080/products
 
 ### 필수 요구사항
 
-- Java 17
-- Spring Boot 3.5.7
-- MySQL 8.0 (또는 H2)
-- Gradle 8.14.3
+- **Java**: 17
+- **Spring Boot**: 3.5.7
+- **MySQL**: 8.0
+- **Gradle**: 8.14.3
+- **Docker**: 필수 (MySQL 컨테이너용)
 
 ### 로컬 실행
 
 ```bash
-# H2 인메모리 DB로 실행 (기본)
+# 1. MySQL 컨테이너 실행
+docker-compose up -d
+
+# 2. 애플리케이션 실행 (dev 프로파일 - 기본)
 ./gradlew bootRun
 
-# MySQL로 실행 (Docker)
-docker-compose up -d
-./gradlew bootRun --args='--spring.profiles.active=dev'
+# 3. 또는 운영 환경으로 실행
+./gradlew bootRun --args='--spring.profiles.active=prod'
 ```
 
 ### 주요 URL
@@ -392,8 +403,8 @@ docker-compose up -d
 |--------|-----|
 | **Swagger UI** | http://localhost:8080/swagger-ui.html |
 | **OpenAPI Spec** | http://localhost:8080/api-docs |
-| **H2 Console** | http://localhost:8080/h2-console |
 | **Health Check** | http://localhost:8080/actuator/health |
+| **MySQL** | localhost:3306 (root/123123) |
 
 ---
 
@@ -401,20 +412,18 @@ docker-compose up -d
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0.0 | 2025-10-28 | Initial release |
+| 3.0 | 2025-11-20 | MySQL 단일화 및 신규 기능 추가 (5주차)<br/>- InMemory Repository 완전 제거<br/>- OrderSequence 엔티티 추가 (주문 번호 생성)<br/>- Payment 엔티티 추가 (결제 정보 관리)<br/>- 테스트 260개로 증가 (242 통과, 18 스킵)<br/>- 동시성 테스트 강화 (잔액, 재고, 쿠폰) |
+| 2.0 | 2025-11-16 | 실제 구현 반영 (4주차)<br/>- API 경로 `/api` 프리픽스 추가<br/>- 동시성 제어 방식 수정<br/>- H2 제거, MySQL 8.0만 사용<br/>- 통합 테스트 정보 추가<br/>- Use Case 매핑 추가 |
+| 1.0 | 2025-10-28 | 초기 API 명세 작성 |
 
 ---
 
-## 🤝 기여하기
+## 🔗 관련 문서
 
-API 개선 제안이나 버그 리포트는 이슈로 등록해주세요.
-
----
-
-## 📞 연락처
-
-- API Support: support@ecommerce.com
-- Documentation: https://docs.ecommerce.com
+- **[테스트 가이드](../testing/TEST_GUIDE.md)** - 통합 테스트 작성 방법
+- **[Repository 구현](../architecture/REPOSITORY_IMPLEMENTATION.md)** - Repository 패턴 및 동시성 제어
+- **[도메인 설계](../design/domain-design.md)** - 엔티티 및 비즈니스 로직
+- **[Use Cases](../requirements/use-cases.md)** - 상세 유스케이스 명세
 
 ---
 

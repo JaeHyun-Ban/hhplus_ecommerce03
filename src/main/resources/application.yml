@@ -3,7 +3,7 @@ spring:
     name: ecommerce
 
   profiles:
-    active: dev  # 기본 프로파일 (dev: MySQL, inmemory: 인메모리)
+    active: dev  # 기본 프로파일 (dev: MySQL)
 
   jpa:
     open-in-view: false
@@ -112,25 +112,4 @@ spring:
 logging:
   level:
     com.hhplus.ecommerce: info
-
----
-# InMemory 환경 (순수 인메모리 Repository)
-spring:
-  config:
-    activate:
-      on-profile: inmemory
-
-  # JPA 비활성화
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
-
-# Repository 타입을 inmemory로 설정
-repository:
-  type: inmemory
-
-logging:
-  level:
-    com.hhplus.ecommerce: debug
 
