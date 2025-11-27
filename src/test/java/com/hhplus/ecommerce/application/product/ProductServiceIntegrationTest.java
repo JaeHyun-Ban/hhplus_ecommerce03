@@ -15,7 +15,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
@@ -32,6 +35,7 @@ import static org.assertj.core.api.Assertions.*;
  * - 실제 MySQL 컨테이너를 사용한 통합 테스트
  * - JPA, 트랜잭션, DB 제약조건 등 실제 동작 검증
  * - 페이징, 통계 조회 등 복잡한 쿼리 테스트
+ * - Redis 컨테이너로 Redisson 분산락 테스트
  */
 @SpringBootTest
 @Testcontainers
@@ -39,6 +43,16 @@ import static org.assertj.core.api.Assertions.*;
 @ActiveProfiles("test")
 @DisplayName("ProductService 통합 테스트 (TestContainers)")
 class ProductServiceIntegrationTest {
+
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379);
+
+    static {
+        redis.start();
+        System.setProperty("spring.data.redis.host", redis.getHost());
+        System.setProperty("spring.data.redis.port", redis.getMappedPort(6379).toString());
+    }
 
     @Autowired
     private ProductService productService;
@@ -52,10 +66,16 @@ class ProductServiceIntegrationTest {
     @Autowired
     private ProductStatisticsRepository productStatisticsRepository;
 
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
     private Category testCategory;
 
     @BeforeEach
     void setUp() {
+        // Redis 캐시 초기화
+        redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
+
         // 각 테스트 전에 DB 초기화
         productStatisticsRepository.deleteAll();
         productRepository.deleteAll();

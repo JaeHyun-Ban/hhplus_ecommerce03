@@ -2,10 +2,13 @@ package com.hhplus.ecommerce.application.product;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 상품 통계 스케줄러
@@ -32,8 +35,7 @@ import java.time.LocalDate;
  *
  * 실행 환경:
  * - @EnableScheduling 활성화 필요 (SchedulerConfig)
- * - 단일 인스턴스 환경에서만 실행 권장
- * - 다중 인스턴스 환경에서는 분산 락 필요 (ShedLock 등)
+ * - 다중 인스턴스 환경에서 Redisson 분산락으로 중복 실행 방지
  */
 @Slf4j
 @Component
@@ -41,6 +43,9 @@ import java.time.LocalDate;
 public class ProductStatisticsScheduler {
 
     private final ProductStatisticsService productStatisticsService;
+    private final RedissonClient redissonClient;
+
+    private static final String LOCK_KEY = "lock:batch:product-statistics:daily";
 
     /**
      * 일일 상품 통계 집계 배치 작업
@@ -53,6 +58,12 @@ public class ProductStatisticsScheduler {
      * - 상품별 판매량, 판매금액 계산
      * - ProductStatistics 테이블 저장
      *
+     * 동시성 제어:
+     * - Redisson 분산락으로 다중 서버 환경에서 하나의 서버만 실행
+     * - waitTime: 1초 (배치는 즉시 실패)
+     * - leaseTime: 5분 (긴 작업 시간 고려)
+     * - 락 획득 실패 시 조용히 스킵
+     *
      * 예외 처리:
      * - 배치 작업 실패 시 로그 기록
      * - 다음날 재실행으로 복구 가능
@@ -63,36 +74,59 @@ public class ProductStatisticsScheduler {
      */
     @Scheduled(cron = "0 0 1 * * *")
     public void aggregateDailyStatistics() {
-        long startTime = System.currentTimeMillis();
-        log.info("==============================================");
-        log.info("[스케줄러] 일일 상품 통계 집계 배치 시작");
-        log.info("==============================================");
+        RLock lock = redissonClient.getLock(LOCK_KEY);
 
         try {
-            // 전일 날짜 계산 (D-1)
-            LocalDate targetDate = LocalDate.now().minusDays(1);
+            // 락 획득 시도: 1초 대기, 5분 후 자동 해제
+            boolean isLocked = lock.tryLock(1, 300, TimeUnit.SECONDS);
 
-            // 통계 집계 실행
-            int aggregatedCount = productStatisticsService.aggregateDailyStatistics(targetDate);
+            if (!isLocked) {
+                log.warn("[스케줄러] 분산락 획득 실패 - 다른 서버가 배치 실행 중");
+                log.info("[스케줄러] 배치 작업 스킵");
+                return;
+            }
 
-            long elapsedTime = System.currentTimeMillis() - startTime;
+            long startTime = System.currentTimeMillis();
             log.info("==============================================");
-            log.info("[스케줄러] 일일 상품 통계 집계 배치 완료");
-            log.info("[스케줄러] - 대상 날짜: {}", targetDate);
-            log.info("[스케줄러] - 집계된 상품 수: {}", aggregatedCount);
-            log.info("[스케줄러] - 실행 시간: {}ms", elapsedTime);
+            log.info("[스케줄러] 일일 상품 통계 집계 배치 시작 - Redisson 분산락 획득 완료");
             log.info("==============================================");
 
-        } catch (Exception e) {
-            long elapsedTime = System.currentTimeMillis() - startTime;
-            log.error("==============================================");
-            log.error("[스케줄러] 일일 상품 통계 집계 배치 실패");
-            log.error("[스케줄러] - 실행 시간: {}ms", elapsedTime);
-            log.error("[스케줄러] - 오류 메시지: {}", e.getMessage(), e);
-            log.error("==============================================");
+            try {
+                // 전일 날짜 계산 (D-1)
+                LocalDate targetDate = LocalDate.now().minusDays(1);
 
-            // 예외를 다시 던지지 않고 로그만 기록
-            // 다음날 재실행으로 복구 가능
+                // 통계 집계 실행
+                int aggregatedCount = productStatisticsService.aggregateDailyStatistics(targetDate);
+
+                long elapsedTime = System.currentTimeMillis() - startTime;
+                log.info("==============================================");
+                log.info("[스케줄러] 일일 상품 통계 집계 배치 완료");
+                log.info("[스케줄러] - 대상 날짜: {}", targetDate);
+                log.info("[스케줄러] - 집계된 상품 수: {}", aggregatedCount);
+                log.info("[스케줄러] - 실행 시간: {}ms", elapsedTime);
+                log.info("==============================================");
+
+            } catch (Exception e) {
+                long elapsedTime = System.currentTimeMillis() - startTime;
+                log.error("==============================================");
+                log.error("[스케줄러] 일일 상품 통계 집계 배치 실패");
+                log.error("[스케줄러] - 실행 시간: {}ms", elapsedTime);
+                log.error("[스케줄러] - 오류 메시지: {}", e.getMessage(), e);
+                log.error("==============================================");
+
+                // 예외를 다시 던지지 않고 로그만 기록
+                // 다음날 재실행으로 복구 가능
+            }
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[스케줄러] 락 획득 중 인터럽트 발생", e);
+        } finally {
+            // 락 해제
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+                log.info("[스케줄러] Redisson 분산락 해제 완료");
+            }
         }
     }
 

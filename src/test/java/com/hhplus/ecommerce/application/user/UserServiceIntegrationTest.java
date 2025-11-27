@@ -41,10 +41,18 @@ class UserServiceIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUp() {
         // 각 테스트 전에 DB 초기화
+        // Native query로 외래 키 제약 조건을 우회하여 삭제
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+
         userRepository.deleteAll();
+
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
     }
 
     @Nested

@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -37,13 +36,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 선착순 쿠폰 발급 동시성 테스트
  *
  * 검증 목표:
- * - 낙관적 락 (@Version)을 통한 동시성 제어 검증
+ * - Redisson 분산 락을 통한 동시성 제어 검증
  * - 100개 쿠폰에 1000명이 동시 요청 시 정확히 100명만 발급 성공
- * - 재시도 로직 (@Retryable) 검증
+ * - 분산 락으로 인한 순차적 처리 검증
  * - 쿠폰 소진 후 추가 발급 불가 검증
  *
  * 테스트 환경:
  * - TestContainers를 사용한 MySQL 8.0 컨테이너
+ * - TestContainers를 사용한 Redis 7 컨테이너
  * - 실제 DB 환경에서 동시성 제어 검증
  */
 @Slf4j
@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @org.testcontainers.junit.jupiter.Testcontainers
 @org.springframework.context.annotation.Import(com.hhplus.ecommerce.config.TestContainersConfig.class)
 @ActiveProfiles("test")
-@DisplayName("선착순 쿠폰 발급 동시성 테스트")
+@DisplayName("선착순 쿠폰 발급 동시성 테스트 (Redisson 분산 락)")
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_CLASS)
 class CouponServiceConcurrencyTest {
@@ -80,12 +80,17 @@ class CouponServiceConcurrencyTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private Coupon testCoupon;
     private List<User> testUsers;
 
     @BeforeEach
     void setUp() {
         // 기존 데이터 정리 (외래키 제약조건 순서 고려)
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+
         cartItemRepository.deleteAll();
         cartRepository.deleteAll();
         userCouponRepository.deleteAll();
@@ -93,6 +98,8 @@ class CouponServiceConcurrencyTest {
         userRepository.deleteAll();
         productRepository.deleteAll();
         categoryRepository.deleteAll();
+
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
 
         // 테스트용 카테고리 생성 (고유한 이름으로 생성)
         Category category = Category.builder()
@@ -153,6 +160,7 @@ class CouponServiceConcurrencyTest {
 
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
+        AtomicInteger lockFailCount = new AtomicInteger(0);
         List<String> errors = new CopyOnWriteArrayList<>();
 
         // When: 1000명이 동시에 쿠폰 발급 요청
@@ -171,10 +179,16 @@ class CouponServiceConcurrencyTest {
                     // 쿠폰 소진 또는 발급 불가
                     failCount.incrementAndGet();
                     errors.add(e.getMessage());
+
+                    // 락 획득 실패 카운트
+                    if (e.getMessage().contains("요청이 많습니다") || e.getMessage().contains("잠시 후")) {
+                        lockFailCount.incrementAndGet();
+                    }
+
                     log.debug("발급 실패 - userId: {}, reason: {}", user.getId(), e.getMessage());
 
                 } catch (Exception e) {
-                    // 낙관적 락 충돌 후 재시도 실패 등
+                    // 기타 오류
                     failCount.incrementAndGet();
                     errors.add(e.getMessage());
                     log.warn("발급 오류 - userId: {}, error: {}", user.getId(), e.getMessage());
@@ -185,8 +199,8 @@ class CouponServiceConcurrencyTest {
             });
         }
 
-        // 모든 스레드가 완료될 때까지 대기 (최대 30초)
-        boolean completed = latch.await(30, TimeUnit.SECONDS);
+        // 모든 스레드가 완료될 때까지 대기 (최대 60초)
+        boolean completed = latch.await(60, TimeUnit.SECONDS);
         executorService.shutdown();
 
         long endTime = System.currentTimeMillis();
@@ -195,7 +209,7 @@ class CouponServiceConcurrencyTest {
         // Then: 검증
         log.info("=== 동시성 테스트 결과 ===");
         log.info("소요 시간: {}ms", duration);
-        log.info("성공: {}건, 실패: {}건", successCount.get(), failCount.get());
+        log.info("성공: {}건, 실패: {}건 (락 획득 실패: {}건)", successCount.get(), failCount.get(), lockFailCount.get());
         log.info("완료 여부: {}", completed);
 
         // 1. 모든 요청이 완료되었는지 확인
@@ -217,14 +231,14 @@ class CouponServiceConcurrencyTest {
         // 5. 쿠폰 상태가 EXHAUSTED로 변경되었는지 확인
         assertThat(updatedCoupon.getStatus()).isEqualTo(CouponStatus.EXHAUSTED);
 
-        // 6. 실패 이유 확인 (대부분 "쿠폰이 모두 소진되었습니다")
+        // 6. 실패 이유 확인 (대부분 "쿠폰이 모두 소진되었습니다" 또는 락 획득 실패)
         long soldOutErrors = errors.stream()
             .filter(msg -> msg.contains("소진"))
             .count();
         log.info("쿠폰 소진으로 인한 실패: {}건", soldOutErrors);
         assertThat(soldOutErrors).isGreaterThan(0);
 
-        log.info("=== 동시성 테스트 성공: 낙관적 락이 정상 동작함 ===");
+        log.info("=== 동시성 테스트 성공: Redisson 분산 락이 정상 동작함 ===");
     }
 
     @Test
@@ -257,7 +271,7 @@ class CouponServiceConcurrencyTest {
             });
         }
 
-        latch.await(10, TimeUnit.SECONDS);
+        latch.await(30, TimeUnit.SECONDS);
         executorService.shutdown();
 
         // Then: 1개만 발급 성공
@@ -273,56 +287,4 @@ class CouponServiceConcurrencyTest {
         log.info("=== 중복 발급 방지 테스트 성공 ===");
     }
 
-    @Test
-    @DisplayName("낙관적 락 재시도 테스트: 충돌 시 최대 3회 재시도")
-    void testOptimisticLockRetry() throws InterruptedException {
-        // Given: 10명의 새로운 사용자가 동시 요청 (기존 테스트와 겹치지 않도록)
-        int concurrentUsers = 10;
-        int startIndex = 200; // 기존 테스트와 겹치지 않는 사용자 인덱스
-        ExecutorService executorService = Executors.newFixedThreadPool(concurrentUsers);
-        CountDownLatch latch = new CountDownLatch(concurrentUsers);
-
-        AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger failCount = new AtomicInteger(0);
-        List<String> errors = new CopyOnWriteArrayList<>();
-
-        // When
-        for (int i = 0; i < concurrentUsers; i++) {
-            int finalI = i;
-            executorService.submit(() -> {
-                try {
-                    User user = testUsers.get(startIndex + finalI);
-                    couponService.issueCoupon(user.getId(), testCoupon.getId());
-                    successCount.incrementAndGet();
-                } catch (Exception e) {
-                    // 재시도 후에도 실패한 경우
-                    failCount.incrementAndGet();
-                    errors.add(e.getClass().getSimpleName() + ": " + e.getMessage());
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-
-        latch.await(10, TimeUnit.SECONDS);
-        executorService.shutdown();
-
-        // Then: 쿠폰이 충분하므로 대부분 성공해야 함 (재시도 덕분에)
-        System.out.println("성공: " + successCount.get() + "명");
-        System.out.println("실패: " + failCount.get() + "명");
-        if (!errors.isEmpty()) {
-            System.out.println("에러 목록:");
-            errors.forEach(System.out::println);
-        }
-
-        // 쿠폰 상태 확인
-        Coupon updatedCoupon = couponRepository.findById(testCoupon.getId()).orElseThrow();
-        System.out.println("쿠폰 발급 수량: " + updatedCoupon.getIssuedQuantity() + "/" + updatedCoupon.getTotalQuantity());
-
-        // 재시도 메커니즘이 있으므로 최소 50% 이상은 성공해야 함
-        // (멀티스레드 환경에서 완벽한 100% 성공을 보장하기는 어려움)
-        assertThat(successCount.get()).isGreaterThanOrEqualTo(concurrentUsers / 2);
-
-        log.info("=== 낙관적 락 재시도 테스트 완료: {}명 중 {}명 성공 ===", concurrentUsers, successCount.get());
-    }
 }

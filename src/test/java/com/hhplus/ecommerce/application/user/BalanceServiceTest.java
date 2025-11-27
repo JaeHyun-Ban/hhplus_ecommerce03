@@ -34,14 +34,15 @@ import static org.assertj.core.api.Assertions.*;
  *
  * 테스트 전략:
  * - 실제 MySQL 컨테이너를 사용한 통합 테스트
+ * - 실제 Redis 컨테이너를 사용한 분산 락 테스트
  * - JPA, 트랜잭션, DB 제약조건 등 실제 동작 검증
- * - 비관적 락을 통한 동시성 제어 검증
+ * - Redisson 분산 락을 통한 동시성 제어 검증
  */
 @SpringBootTest
 @Testcontainers
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
-@DisplayName("BalanceService 통합 테스트 (TestContainers)")
+@DisplayName("BalanceService 통합 테스트 (Redisson 분산 락)")
 class BalanceServiceTest {
 
     @Autowired
@@ -59,15 +60,23 @@ class BalanceServiceTest {
     @Autowired
     private CartItemRepository cartItemRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private User testUser;
 
     @BeforeEach
     void setUp() {
         // 각 테스트 전에 DB 초기화 (외래키 제약조건 순서 고려)
+        // Native query로 외래 키 제약 조건을 우회하여 삭제
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
+
         cartItemRepository.deleteAll();
         cartRepository.deleteAll();
         balanceHistoryRepository.deleteAll();
         userRepository.deleteAll();
+
+        jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
 
         // 테스트용 사용자 생성
         testUser = createAndSaveUser("test@test.com", BigDecimal.valueOf(10000));
