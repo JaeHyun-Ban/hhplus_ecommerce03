@@ -22,12 +22,15 @@ import com.hhplus.ecommerce.infrastructure.persistence.user.BalanceHistoryReposi
 import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -35,6 +38,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 주문 애플리케이션 서비스
@@ -71,6 +75,27 @@ public class OrderService {
     // Services
     private final OrderSequenceService orderSequenceService;
 
+    // Redisson
+    private final RedissonClient redissonClient;
+
+    // Self-reference for proxy invocation
+    private OrderService self;
+
+    // 중요: 잔액 수정을 포함하므로 BalanceService와 동일한 락 키 사용
+    // 주문 생성 시 balance 차감이 발생하므로 같은 user의 balance 충전과 동기화 필요
+    private static final String LOCK_PREFIX = "balance:user:lock:";
+
+    /**
+     * Self-injection을 통한 프록시 참조 획득
+     * (내부 메서드 호출 시 트랜잭션 적용을 위함)
+     *
+     * @Lazy를 사용하여 순환 의존성 문제 해결
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setSelf(@org.springframework.context.annotation.Lazy OrderService self) {
+        this.self = self;
+    }
+
     /**
      * 주문 생성 및 결제
      *
@@ -95,6 +120,7 @@ public class OrderService {
      * 8. 주문 정보 반환
      *
      * 동시성 제어:
+     * - 분산락: Redisson RLock (userId 기반, 동일 사용자의 동시 주문 방지)
      * - 재고: 낙관적 락 (@Version) + 재시도 (@Retryable, 최대 5회)
      * - 잔액: 비관적 락 (SELECT FOR UPDATE)
      * - 주문 번호: 비관적 락 (SELECT FOR UPDATE) + REQUIRES_NEW 트랜잭션
@@ -109,7 +135,6 @@ public class OrderService {
      * @throws IllegalArgumentException 잘못된 요청 (사용자 없음, 장바구니 비어있음, 쿠폰 오류 등)
      * @throws IllegalStateException 비즈니스 규칙 위반 (재고 부족, 잔액 부족 등)
      */
-    @Transactional
     @Retryable(
         value = {ObjectOptimisticLockingFailureException.class, org.springframework.dao.CannotAcquireLockException.class},
         maxAttempts = 5,
@@ -118,6 +143,51 @@ public class OrderService {
     public Order createOrder(Long userId, Long userCouponId, String idempotencyKey) {
         log.info("[UC-012] 주문 생성 시작 - userId: {}, idempotencyKey: {}", userId, idempotencyKey);
 
+        // Redisson 분산락 획득 (userId 기반)
+        String lockKey = LOCK_PREFIX + userId; // key생성
+        // key로 락 객체를 가져옴
+        //>분산락을 조작하기 위한 proxy객체를 리턴한다.
+        RLock lock = redissonClient.getLock(lockKey);
+        // 순서
+        // 락 획득 - 트랜잭션 시작 - 비즈니스로직수행 - 트랜잭션 종료 - 락 해제
+        try {
+            // 락 획득 시도: 10초 대기, 30초 후 자동 해제
+            // 실제 락을 잡는 코드
+            // 최대 10초동안 락을 얻기 위해 기다린다, 락을 획득하면 30초뒤에 자동으로 unlock
+            boolean isLocked = lock.tryLock(10, 30, TimeUnit.SECONDS); //
+
+            if (!isLocked) {
+                log.warn("[UC-012] 분산락 획득 실패 - 다른 요청이 주문 처리 중: userId: {}", userId);
+                throw new IllegalStateException("주문 처리 중입니다. 잠시 후 다시 시도해주세요.");
+            }
+
+            log.info("[UC-012] Redisson 분산락 획득 완료 - lockKey: {}", lockKey);
+
+            // 트랜잭션 시작하여 주문 처리 (self를 통해 프록시 호출)(비즈니스 로직 수행, 트랜잭션 시작 및 트랜잭션 종료)
+            return self.createOrderWithTransaction(userId, userCouponId, idempotencyKey);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[UC-012] 락 획득 중 인터럽트 발생 - userId: {}", userId, e);
+            throw new IllegalStateException("주문 처리 중 오류가 발생했습니다.", e);
+        } finally {
+            // 락 해제
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+                log.info("[UC-012] Redisson 분산락 해제 완료 - lockKey: {}", lockKey);
+            }
+        }
+    }
+
+    /**
+     * 트랜잭션 내에서 주문 생성 처리
+     * (Redisson 분산락과 트랜잭션 분리를 위한 내부 메서드)
+     *
+     * REQUIRES_NEW를 사용하여 새로운 트랜잭션을 시작
+     * (self-invocation 문제 해결)
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Order createOrderWithTransaction(Long userId, Long userCouponId, String idempotencyKey) {
         // Step 1: 멱등성 키 중복 확인 (멱등성 보장: 기존 주문 반환)
         Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
         if (existingOrder.isPresent()) {
