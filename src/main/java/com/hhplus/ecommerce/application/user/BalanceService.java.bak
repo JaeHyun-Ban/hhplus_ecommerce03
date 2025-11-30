@@ -7,17 +7,13 @@ import com.hhplus.ecommerce.infrastructure.persistence.user.BalanceHistoryReposi
 import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 잔액 애플리케이션 서비스
@@ -29,7 +25,6 @@ import java.util.concurrent.TimeUnit;
  * - UC-002: 잔액 조회
  * - 트랜잭션 관리
  * - 잔액 이력 기록
- * - 동시성 제어 (Redisson 분산 락)
  *
  * 레이어 의존성:
  * - Infrastructure Layer: UserRepository, BalanceHistoryRepository
@@ -43,110 +38,51 @@ public class BalanceService {
 
     private final UserRepository userRepository;
     private final BalanceHistoryRepository balanceHistoryRepository;
-    private final RedissonClient redissonClient;
-    private final org.springframework.context.ApplicationContext applicationContext;
-
-    private static final String BALANCE_LOCK_PREFIX = "balance:user:lock:";
-    private static final long LOCK_WAIT_TIME = 10L;     // 락 획득 대기 시간 (초)
-    private static final long LOCK_LEASE_TIME = 10L;    // 락 자동 해제 시간 (초)
 
     /**
      * 잔액 충전
      *
      * Use Case: UC-001
      * - Step 1: 사용자가 충전 금액 입력
-     * - Step 2: 분산 락 획득
-     * - Step 3: 새 트랜잭션에서 잔액 충전 실행 (REQUIRES_NEW)
-     * - Step 4: 트랜잭션 커밋 (중요: 락 해제 전에 자동 커밋)
-     * - Step 5: 분산 락 해제
-     * - Step 6: 충전 결과 반환
+     * - Step 2: 시스템이 사용자 조회
+     * - Step 3: 잔액 충전 (도메인 로직)
+     * - Step 4: 잔액 이력 기록
+     * - Step 5: 충전 결과 반환
      *
      * 트랜잭션:
-     * - chargeBalanceWithLock()이 REQUIRES_NEW로 독립 트랜잭션 생성
-     * - 메소드 반환 시 자동 커밋, 그 후 finally에서 락 해제
-     * - Redisson 분산 락으로 동시성 제어
+     * - 잔액 충전 + 이력 기록은 원자적으로 수행
+     * - 비관적 락(PESSIMISTIC_WRITE)으로 동시성 제어
      *
      * 동시성 시나리오:
      * - 사용자 A가 동시에 두 번 충전 요청
-     * - 분산 락으로 한 트랜잭션만 실행, 나머지는 대기
-     * - 트랜잭션 커밋 후 락 해제로 다음 트랜잭션이 최신 데이터 조회
+     * - SELECT FOR UPDATE로 한 트랜잭션만 실행, 나머지는 대기
      * - 잔액 정확성 보장
      *
      * @param userId 사용자 ID
      * @param amount 충전 금액
      * @return 충전 후 잔액
      * @throws IllegalArgumentException 잘못된 금액
-     * @throws IllegalStateException 락 획득 실패
+     * @throws EntityNotFoundException 사용자 없음
      */
+    @Transactional
     public BigDecimal chargeBalance(Long userId, BigDecimal amount) {
         log.info("[UC-001] 잔액 충전 시작 - userId: {}, amount: {}", userId, amount);
 
         // Step 1: 입력 검증
         validateChargeAmount(amount);
 
-        // Step 2: 분산 락 획득
-        String lockKey = BALANCE_LOCK_PREFIX + userId;
-        RLock lock = redissonClient.getLock(lockKey);
-
-        try {
-            // 락 획득 시도: 10초 대기, 10초 후 자동 해제
-            boolean isLocked = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
-
-            if (!isLocked) {
-                log.warn("잔액 충전 락 획득 실패 - userId: {}", userId);
-                throw new IllegalStateException("잔액 처리 요청이 많습니다. 잠시 후 다시 시도해주세요");
-            }
-
-            log.debug("분산 락 획득 성공 - lockKey: {}", lockKey);
-
-            try {
-                // Step 3: 새 트랜잭션에서 잔액 충전 (REQUIRES_NEW로 독립 트랜잭션)
-                // 프록시를 통해 호출하여 @Transactional 적용
-                // 메소드 반환 시 자동 커밋 → finally에서 락 해제
-                BalanceService self = applicationContext.getBean(BalanceService.class);
-                return self.chargeBalanceWithLock(userId, amount);
-
-            } finally {
-                // Step 5: 락 해제 (트랜잭션 커밋 후 실행)
-                if (lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                    log.debug("분산 락 해제 완료 - lockKey: {}", lockKey);
-                }
-            }
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("잔액 충전 중 인터럽트 발생 - userId: {}", userId, e);
-            throw new IllegalStateException("잔액 충전 중 오류가 발생했습니다");
-        }
-    }
-
-    /**
-     * 락을 획득한 상태에서 잔액 충전 수행
-     *
-     * REQUIRES_NEW: 독립적인 새 트랜잭션 생성
-     * - 메소드 반환 시 트랜잭션 자동 커밋
-     * - chargeBalance()의 finally 블록에서 락 해제
-     * - 트랜잭션 커밋 → 락 해제 순서 보장으로 동시성 정합성 확보
-     *
-     * 주의: 이 메소드는 반드시 Spring 프록시를 통해 호출되어야 함
-     * chargeBalance()에서 applicationContext.getBean()으로 프록시 획득 후 호출
-     */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public BigDecimal chargeBalanceWithLock(Long userId, BigDecimal amount) {
-        // 사용자 조회
-        User user = userRepository.findById(userId)
+        // Step 2: 사용자 조회 (비관적 락)
+        User user = userRepository.findByIdWithLock(userId)
             .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다. ID: " + userId));
 
         // 충전 전 잔액 저장
         BigDecimal balanceBefore = user.getBalance();
 
-        // 잔액 충전 (도메인 로직)
+        // Step 3: 잔액 충전 (도메인 로직)
         user.chargeBalance(amount);
-        userRepository.save(user);  // 명시적 저장
         BigDecimal balanceAfter = user.getBalance();
 
-        // 잔액 이력 기록
+        // Step 4: 잔액 이력 기록
         recordBalanceHistory(
             user,
             BalanceTransactionType.CHARGE,
@@ -159,7 +95,7 @@ public class BalanceService {
         log.info("[UC-001] 잔액 충전 완료 - userId: {}, before: {}, after: {}",
                  userId, balanceBefore, balanceAfter);
 
-        // 트랜잭션 커밋 (메소드 반환 시 자동)
+        // Step 5: 충전 후 잔액 반환
         return balanceAfter;
     }
 
@@ -172,7 +108,7 @@ public class BalanceService {
      *
      * @param userId 사용자 ID
      * @return 현재 잔액
-     * @throws IllegalArgumentException 사용자 없음
+     * @throws EntityNotFoundException 사용자 없음
      */
     public BigDecimal getBalance(Long userId) {
         log.info("[UC-002] 잔액 조회 - userId: {}", userId);

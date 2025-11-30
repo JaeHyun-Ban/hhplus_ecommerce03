@@ -34,15 +34,14 @@ import static org.assertj.core.api.Assertions.*;
  *
  * 테스트 전략:
  * - 실제 MySQL 컨테이너를 사용한 통합 테스트
- * - 실제 Redis 컨테이너를 사용한 분산 락 테스트
  * - JPA, 트랜잭션, DB 제약조건 등 실제 동작 검증
- * - Redisson 분산 락을 통한 동시성 제어 검증
+ * - 비관적 락을 통한 동시성 제어 검증
  */
 @SpringBootTest
 @Testcontainers
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
-@DisplayName("BalanceService 통합 테스트 (Redisson 분산 락)")
+@DisplayName("BalanceService 통합 테스트 (TestContainers)")
 class BalanceServiceTest {
 
     @Autowired

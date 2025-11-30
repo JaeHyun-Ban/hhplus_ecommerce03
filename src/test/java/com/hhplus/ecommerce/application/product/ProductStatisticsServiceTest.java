@@ -1,6 +1,6 @@
 package com.hhplus.ecommerce.application.product;
 
-import com.hhplus.ecommerce.common.FakeRepositorySupport;
+import com.hhplus.ecommerce.config.TestContainersConfig;
 import com.hhplus.ecommerce.domain.order.Order;
 import com.hhplus.ecommerce.domain.order.OrderItem;
 import com.hhplus.ecommerce.domain.order.OrderStatus;
@@ -12,372 +12,130 @@ import com.hhplus.ecommerce.domain.user.User;
 import com.hhplus.ecommerce.domain.user.UserRole;
 import com.hhplus.ecommerce.domain.user.UserStatus;
 import com.hhplus.ecommerce.infrastructure.persistence.order.OrderRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.product.CategoryRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.ProductRepository;
 import com.hhplus.ecommerce.infrastructure.persistence.product.ProductStatisticsRepository;
+import com.hhplus.ecommerce.infrastructure.persistence.user.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.ArrayList;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ProductStatisticsService 단위 테스트
+ * ProductStatisticsService 통합 테스트
  *
  * 테스트 전략:
- * - 인메모리 데이터(Map, List) 사용
+ * - TestContainers (MySQL, Redis) 사용
  * - Given-When-Then 패턴
  * - 배치 집계 로직 검증
  */
-@DisplayName("ProductStatisticsService 단위 테스트")
+@Slf4j
+@SpringBootTest
+@Testcontainers
+@Import(TestContainersConfig.class)
+@ActiveProfiles("test")
+@DisplayName("ProductStatisticsService 통합 테스트")
 class ProductStatisticsServiceTest {
 
-    private OrderRepository orderRepository;
-    private ProductRepository productRepository;
-    private ProductStatisticsRepository productStatisticsRepository;
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379);
+
+    static {
+        redis.start();
+        System.setProperty("spring.data.redis.host", redis.getHost());
+        System.setProperty("spring.data.redis.port", redis.getMappedPort(6379).toString());
+    }
+
+    @Autowired
     private ProductStatisticsService productStatisticsService;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ProductStatisticsRepository productStatisticsRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private User testUser;
     private Category testCategory;
     private Product testProduct1;
     private Product testProduct2;
 
-    /**
-     * Fake OrderRepository - 인메모리 List 사용
-     */
-    static class FakeOrderRepository extends FakeRepositorySupport<Order, Long> implements OrderRepository {
-        private final List<Order> store = new ArrayList<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public Order save(Order order) {
-            if (order.getId() == null) {
-                Order newOrder = Order.builder()
-                        .id(idGenerator.getAndIncrement())
-                        .orderNumber(order.getOrderNumber())
-                        .user(order.getUser())
-                        .orderItems(order.getOrderItems())
-                        .totalAmount(order.getTotalAmount())
-                        .discountAmount(order.getDiscountAmount())
-                        .finalAmount(order.getFinalAmount())
-                        .status(order.getStatus())
-                        .orderedAt(order.getOrderedAt())
-                        .paidAt(order.getPaidAt())
-                        .idempotencyKey(order.getIdempotencyKey())
-                        .build();
-                store.add(newOrder);
-                return newOrder;
-            }
-            store.removeIf(o -> o.getId().equals(order.getId()));
-            store.add(order);
-            return order;
-        }
-
-        @Override
-        public Optional<Order> findById(Long id) {
-            return store.stream()
-                    .filter(order -> order.getId().equals(id))
-                    .findFirst();
-        }
-
-        @Override
-        public List<Order> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public void deleteById(Long id) {
-            findById(id).ifPresent(this::delete);
-        }
-
-        @Override
-        public void delete(Order entity) {
-            store.removeIf(o -> o.getId().equals(entity.getId()));
-        }
-
-        @Override
-        public boolean existsById(Long id) {
-            return findById(id).isPresent();
-        }
-
-        @Override
-        public List<Order> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public Optional<Order> findByIdWithDetails(Long id) {
-            return findById(id);
-        }
-
-        @Override
-        public Optional<Order> findByIdempotencyKey(String idempotencyKey) {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<Order> findByOrderNumber(String orderNumber) {
-            return Optional.empty();
-        }
-
-        @Override
-        public org.springframework.data.domain.Page<Order> findByUserOrderByOrderedAtDesc(
-                User user, org.springframework.data.domain.Pageable pageable) {
-            return org.springframework.data.domain.Page.empty();
-        }
-
-        @Override
-        public org.springframework.data.domain.Page<Order> findByUserAndStatus(
-                User user, OrderStatus status, org.springframework.data.domain.Pageable pageable) {
-            return org.springframework.data.domain.Page.empty();
-        }
-
-        @Override
-        public Long countOrdersBetween(LocalDateTime startOfDay, LocalDateTime endOfDay) {
-            return store.stream()
-                    .filter(order -> !order.getOrderedAt().isBefore(startOfDay) && order.getOrderedAt().isBefore(endOfDay))
-                    .count();
-        }
-
-        @Override
-        public List<Order> findByOrderedAtBetween(LocalDateTime startDate, LocalDateTime endDate) {
-            return store.stream()
-                    .filter(order -> !order.getOrderedAt().isBefore(startDate) && order.getOrderedAt().isBefore(endDate))
-                    .toList();
-        }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
-    /**
-     * Fake ProductRepository - 인메모리 Map 사용
-     */
-    static class FakeProductRepository extends FakeRepositorySupport<Product, Long> implements ProductRepository {
-        private final Map<Long, Product> store = new HashMap<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public Product save(Product product) {
-            if (product.getId() == null) {
-                Long newId = idGenerator.getAndIncrement();
-                Product newProduct = Product.builder()
-                        .id(newId)
-                        .name(product.getName())
-                        .description(product.getDescription())
-                        .price(product.getPrice())
-                        .stock(product.getStock())
-                        .safetyStock(product.getSafetyStock())
-                        .category(product.getCategory())
-                        .status(product.getStatus())
-                        .version(0L)
-                        .build();
-                store.put(newId, newProduct);
-                return newProduct;
-            }
-            store.put(product.getId(), product);
-            return product;
-        }
-
-        @Override
-        public Optional<Product> findById(Long id) {
-            return Optional.ofNullable(store.get(id));
-        }
-
-        @Override
-        public List<Product> findAll() {
-            return new ArrayList<>(store.values());
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public void delete(Product product) {
-            store.remove(product.getId());
-        }
-
-        @Override
-        public void deleteById(Long id) {
-            store.remove(id);
-        }
-
-        @Override
-        public boolean existsById(Long id) {
-            return store.containsKey(id);
-        }
-
-        @Override
-        public List<Product> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public org.springframework.data.domain.Page<Product> findAvailableProducts(
-                org.springframework.data.domain.Pageable pageable) {
-            return org.springframework.data.domain.Page.empty();
-        }
-
-        @Override
-        public org.springframework.data.domain.Page<Product> findByCategoryId(
-                Long categoryId, org.springframework.data.domain.Pageable pageable) {
-            return org.springframework.data.domain.Page.empty();
-        }
-
-        @Override
-        public Optional<Product> findByIdWithLock(Long id) {
-            return findById(id);
-        }
-
-        @Override
-        public List<Product> findLowStockProducts() {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public List<Product> findByStatus(ProductStatus status) {
-            return new ArrayList<>();
-        }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
-    /**
-     * Fake ProductStatisticsRepository - 인메모리 List 사용
-     */
-    static class FakeProductStatisticsRepository extends FakeRepositorySupport<ProductStatistics, Long> implements ProductStatisticsRepository {
-        private final List<ProductStatistics> store = new ArrayList<>();
-        private final AtomicLong idGenerator = new AtomicLong(1);
-
-        @Override
-        public ProductStatistics save(ProductStatistics statistics) {
-            if (statistics.getId() == null) {
-                ProductStatistics newStatistics = ProductStatistics.builder()
-                        .id(idGenerator.getAndIncrement())
-                        .product(statistics.getProduct())
-                        .statisticsDate(statistics.getStatisticsDate())
-                        .salesCount(statistics.getSalesCount())
-                        .salesAmount(statistics.getSalesAmount())
-                        .viewCount(statistics.getViewCount())
-                        .build();
-                store.add(newStatistics);
-                return newStatistics;
-            }
-            store.removeIf(s -> s.getId().equals(statistics.getId()));
-            store.add(statistics);
-            return statistics;
-        }
-
-        @Override
-        public Optional<ProductStatistics> findById(Long id) {
-            return store.stream()
-                    .filter(stat -> stat.getId().equals(id))
-                    .findFirst();
-        }
-
-        @Override
-        public List<ProductStatistics> findAll() {
-            return new ArrayList<>(store);
-        }
-
-        @Override
-        public void deleteAll() {
-            store.clear();
-        }
-
-        @Override
-        public void delete(ProductStatistics entity) {
-            store.removeIf(s -> s.getId().equals(entity.getId()));
-        }
-
-        @Override
-        public void deleteById(Long id) {
-            store.removeIf(s -> s.getId().equals(id));
-        }
-
-        @Override
-        public boolean existsById(Long id) {
-            return store.stream().anyMatch(s -> s.getId().equals(id));
-        }
-
-        @Override
-        public List<ProductStatistics> findAllById(Iterable<Long> ids) {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public List<Long> findTopProductIdsByDateRange(LocalDate startDate, LocalDate endDate, int limit) {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public Optional<ProductStatistics> findByProductIdAndDate(Long productId, LocalDate date) {
-            return store.stream()
-                    .filter(stat -> stat.getProduct().getId().equals(productId) &&
-                                    stat.getStatisticsDate().equals(date))
-                    .findFirst();
-        }
-
-        @Override
-        public List<ProductStatistics> findByProductIdAndDateRange(Long productId, LocalDate startDate, LocalDate endDate) {
-            return store.stream()
-                    .filter(stat -> stat.getProduct().getId().equals(productId) &&
-                                    !stat.getStatisticsDate().isBefore(startDate) &&
-                                    !stat.getStatisticsDate().isAfter(endDate))
-                    .toList();
-        }
-
-        public void clear() {
-            store.clear();
-            idGenerator.set(1);
-        }
-    }
-
     @BeforeEach
     void setUp() {
-        FakeOrderRepository fakeOrderRepo = new FakeOrderRepository();
-        FakeProductRepository fakeProductRepo = new FakeProductRepository();
-        FakeProductStatisticsRepository fakeStatsRepo = new FakeProductStatisticsRepository();
+        // 데이터 정리
+        orderRepository.deleteAll();
+        productStatisticsRepository.deleteAll();
+        productRepository.deleteAll();
+        categoryRepository.deleteAll();
+        userRepository.deleteAll();
 
-        fakeOrderRepo.clear();
-        fakeProductRepo.clear();
-        fakeStatsRepo.clear();
+        // 테스트 사용자 생성
+        testUser = User.builder()
+                .email("test@test.com")
+                .password("password")
+                .name("테스트사용자")
+                .balance(BigDecimal.valueOf(10000000))
+                .role(UserRole.USER)
+                .status(UserStatus.ACTIVE)
+                .build();
+        testUser = userRepository.save(testUser);
 
-        orderRepository = fakeOrderRepo;
-        productRepository = fakeProductRepo;
-        productStatisticsRepository = fakeStatsRepo;
-        productStatisticsService = new ProductStatisticsService(
-                orderRepository,
-                productRepository,
-                productStatisticsRepository
-        );
+        // 테스트 카테고리 생성
+        testCategory = Category.builder()
+                .name("전자제품")
+                .description("테스트 카테고리")
+                .build();
+        testCategory = categoryRepository.save(testCategory);
 
-        // 테스트 데이터 생성
-        testCategory = createCategory(1L, "전자제품");
-        testUser = createUser(1L, "test@test.com");
-        testProduct1 = createProduct(1L, "노트북", BigDecimal.valueOf(1000000), 10);
-        testProduct2 = createProduct(2L, "마우스", BigDecimal.valueOf(30000), 20);
+        // 테스트 상품 생성
+        testProduct1 = Product.builder()
+                .name("노트북")
+                .description("노트북 설명")
+                .price(BigDecimal.valueOf(1000000))
+                .stock(100)
+                .safetyStock(10)
+                .category(testCategory)
+                .status(ProductStatus.AVAILABLE)
+                .build();
+        testProduct1 = productRepository.save(testProduct1);
 
-        productRepository.save(testProduct1);
-        productRepository.save(testProduct2);
+        testProduct2 = Product.builder()
+                .name("마우스")
+                .description("마우스 설명")
+                .price(BigDecimal.valueOf(30000))
+                .stock(200)
+                .safetyStock(20)
+                .category(testCategory)
+                .status(ProductStatus.AVAILABLE)
+                .build();
+        testProduct2 = productRepository.save(testProduct2);
+
+        log.info("테스트 데이터 준비 완료");
     }
 
     @Nested
@@ -391,15 +149,14 @@ class ProductStatisticsServiceTest {
             LocalDate targetDate = LocalDate.of(2025, 11, 6);
 
             // 전일 주문 생성
-            Order order1 = createOrder(1L, testUser, targetDate);
-            order1.getOrderItems().add(createOrderItem(1L, order1, testProduct1, 2)); // 노트북 2개
-            order1.getOrderItems().add(createOrderItem(2L, order1, testProduct2, 1)); // 마우스 1개
+            Order order1 = createOrder(testUser, targetDate);
+            order1.getOrderItems().add(createOrderItem(order1, testProduct1, 2)); // 노트북 2개
+            order1.getOrderItems().add(createOrderItem(order1, testProduct2, 1)); // 마우스 1개
+            order1 = orderRepository.save(order1);
 
-            Order order2 = createOrder(2L, testUser, targetDate);
-            order2.getOrderItems().add(createOrderItem(3L, order2, testProduct1, 1)); // 노트북 1개
-
-            orderRepository.save(order1);
-            orderRepository.save(order2);
+            Order order2 = createOrder(testUser, targetDate);
+            order2.getOrderItems().add(createOrderItem(order2, testProduct1, 1)); // 노트북 1개
+            order2 = orderRepository.save(order2);
 
             // When
             int result = productStatisticsService.aggregateDailyStatistics(targetDate);
@@ -420,6 +177,8 @@ class ProductStatisticsServiceTest {
                     .orElseThrow();
             assertThat(stat2.getSalesCount()).isEqualTo(1);
             assertThat(stat2.getSalesAmount()).isEqualByComparingTo(BigDecimal.valueOf(30000));
+
+            log.info("✅ 전일 주문 데이터 집계 테스트 성공");
         }
 
         @Test
@@ -434,6 +193,8 @@ class ProductStatisticsServiceTest {
             // Then
             assertThat(result).isEqualTo(0);
             assertThat(productStatisticsRepository.findAll()).isEmpty();
+
+            log.info("✅ 주문 없을 때 0 반환 테스트 성공");
         }
 
         @Test
@@ -453,8 +214,8 @@ class ProductStatisticsServiceTest {
             productStatisticsRepository.save(existingStats);
 
             // 새 주문 생성
-            Order order = createOrder(1L, testUser, targetDate);
-            order.getOrderItems().add(createOrderItem(1L, order, testProduct1, 2));
+            Order order = createOrder(testUser, targetDate);
+            order.getOrderItems().add(createOrderItem(order, testProduct1, 2));
             orderRepository.save(order);
 
             // When
@@ -469,6 +230,8 @@ class ProductStatisticsServiceTest {
             assertThat(updated.getSalesCount()).isEqualTo(12); // 10 + 2
             assertThat(updated.getSalesAmount())
                     .isEqualByComparingTo(BigDecimal.valueOf(12000000)); // 10M + 2M
+
+            log.info("✅ 기존 통계 업데이트 테스트 성공");
         }
 
         @Test
@@ -478,13 +241,13 @@ class ProductStatisticsServiceTest {
             LocalDate targetDate = LocalDate.of(2025, 11, 6);
 
             // PAID 주문
-            Order paidOrder = createOrder(1L, testUser, targetDate);
-            paidOrder.getOrderItems().add(createOrderItem(1L, paidOrder, testProduct1, 2));
+            Order paidOrder = createOrder(testUser, targetDate);
+            paidOrder.getOrderItems().add(createOrderItem(paidOrder, testProduct1, 2));
             orderRepository.save(paidOrder);
 
             // PENDING 주문 (집계 제외)
-            Order pendingOrder = createOrderWithStatus(2L, testUser, targetDate, OrderStatus.PENDING);
-            pendingOrder.getOrderItems().add(createOrderItem(2L, pendingOrder, testProduct1, 1));
+            Order pendingOrder = createOrderWithStatus(testUser, targetDate, OrderStatus.PENDING);
+            pendingOrder.getOrderItems().add(createOrderItem(pendingOrder, testProduct1, 1));
             orderRepository.save(pendingOrder);
 
             // When
@@ -497,6 +260,8 @@ class ProductStatisticsServiceTest {
                     .findByProductIdAndDate(testProduct1.getId(), targetDate)
                     .orElseThrow();
             assertThat(stat.getSalesCount()).isEqualTo(2); // PAID 주문만 집계
+
+            log.info("✅ 결제 완료된 주문만 집계 테스트 성공");
         }
 
         @Test
@@ -507,13 +272,13 @@ class ProductStatisticsServiceTest {
             LocalDate otherDate = LocalDate.of(2025, 11, 5);
 
             // 대상 날짜 주문
-            Order targetOrder = createOrder(1L, testUser, targetDate);
-            targetOrder.getOrderItems().add(createOrderItem(1L, targetOrder, testProduct1, 2));
+            Order targetOrder = createOrder(testUser, targetDate);
+            targetOrder.getOrderItems().add(createOrderItem(targetOrder, testProduct1, 2));
             orderRepository.save(targetOrder);
 
             // 다른 날짜 주문 (집계 제외)
-            Order otherOrder = createOrder(2L, testUser, otherDate);
-            otherOrder.getOrderItems().add(createOrderItem(2L, otherOrder, testProduct1, 5));
+            Order otherOrder = createOrder(testUser, otherDate);
+            otherOrder.getOrderItems().add(createOrderItem(otherOrder, testProduct1, 5));
             orderRepository.save(otherOrder);
 
             // When
@@ -526,6 +291,8 @@ class ProductStatisticsServiceTest {
                     .findByProductIdAndDate(testProduct1.getId(), targetDate)
                     .orElseThrow();
             assertThat(stat.getSalesCount()).isEqualTo(2); // 대상 날짜만
+
+            log.info("✅ 대상 날짜만 집계 테스트 성공");
         }
     }
 
@@ -533,45 +300,9 @@ class ProductStatisticsServiceTest {
     // 테스트 데이터 생성 헬퍼 메서드
     // ========================================
 
-    private User createUser(Long id, String email) {
-        return User.builder()
-                .id(id)
-                .email(email)
-                .password("password")
-                .name("테스트사용자")
-                .balance(BigDecimal.valueOf(10000000))
-                .role(UserRole.USER)
-                .status(UserStatus.ACTIVE)
-                .build();
-    }
-
-    private Category createCategory(Long id, String name) {
-        return Category.builder()
-                .id(id)
-                .name(name)
-                .description("테스트 카테고리")
-                .createdAt(LocalDateTime.now())
-                .build();
-    }
-
-    private Product createProduct(Long id, String name, BigDecimal price, int stock) {
-        return Product.builder()
-                .id(id)
-                .name(name)
-                .description(name + " 설명")
-                .price(price)
-                .stock(stock)
-                .safetyStock(5)
-                .category(testCategory)
-                .status(ProductStatus.AVAILABLE)
-                .version(0L)
-                .build();
-    }
-
-    private Order createOrder(Long id, User user, LocalDate orderDate) {
+    private Order createOrder(User user, LocalDate orderDate) {
         return Order.builder()
-                .id(id)
-                .orderNumber("ORD-" + orderDate.toString() + "-" + id)
+                .orderNumber("ORD-" + orderDate + "-" + System.nanoTime())
                 .user(user)
                 .orderItems(new ArrayList<>())
                 .totalAmount(BigDecimal.ZERO)
@@ -580,14 +311,13 @@ class ProductStatisticsServiceTest {
                 .status(OrderStatus.PAID)
                 .orderedAt(orderDate.atStartOfDay())
                 .paidAt(orderDate.atStartOfDay())
-                .idempotencyKey("key-" + id)
+                .idempotencyKey("key-" + System.nanoTime())
                 .build();
     }
 
-    private Order createOrderWithStatus(Long id, User user, LocalDate orderDate, OrderStatus status) {
+    private Order createOrderWithStatus(User user, LocalDate orderDate, OrderStatus status) {
         return Order.builder()
-                .id(id)
-                .orderNumber("ORD-" + orderDate.toString() + "-" + id)
+                .orderNumber("ORD-" + orderDate + "-" + System.nanoTime())
                 .user(user)
                 .orderItems(new ArrayList<>())
                 .totalAmount(BigDecimal.ZERO)
@@ -596,17 +326,11 @@ class ProductStatisticsServiceTest {
                 .status(status)
                 .orderedAt(orderDate.atStartOfDay())
                 .paidAt(status == OrderStatus.PAID ? orderDate.atStartOfDay() : null)
-                .idempotencyKey("key-" + id)
+                .idempotencyKey("key-" + System.nanoTime())
                 .build();
     }
 
-    private OrderItem createOrderItem(Long id, Order order, Product product, int quantity) {
-        return OrderItem.builder()
-                .id(id)
-                .order(order)
-                .product(product)
-                .quantity(quantity)
-                .price(product.getPrice())
-                .build();
+    private OrderItem createOrderItem(Order order, Product product, int quantity) {
+        return OrderItem.of(order, product, quantity);
     }
 }
