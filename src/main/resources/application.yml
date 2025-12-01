@@ -13,12 +13,6 @@ spring:
         use_sql_comments: true
         dialect: org.hibernate.dialect.MySQLDialect
 
-# Repository 타입 설정 (기본값: jpa)
-# - jpa: Spring Data JPA 사용 (MySQL)
-# - inmemory: HashMap 기반 인메모리 Repository 사용
-repository:
-  type: jpa
-
   data:
     redis:
       host: localhost
@@ -30,6 +24,12 @@ repository:
           max-idle: 8
           min-idle: 2
           max-wait: -1ms
+
+# Repository 타입 설정 (기본값: jpa)
+# - jpa: Spring Data JPA 사용 (MySQL)
+# - inmemory: HashMap 기반 인메모리 Repository 사용
+repository:
+  type: jpa
 
 springdoc:
   api-docs:
