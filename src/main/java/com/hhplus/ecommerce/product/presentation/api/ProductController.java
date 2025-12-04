@@ -102,7 +102,7 @@ public class ProductController {
     }
 
     /**
-     * 인기 상품 조회
+     * 인기 상품 조회 (DB 기반)
      *
      * Use Case: UC-006
      * - GET /api/products/popular
@@ -111,14 +111,66 @@ public class ProductController {
      * @return 인기 상품 목록 (최대 5개)
      */
     @Operation(
-        summary = "인기 상품 조회",
-        description = "최근 3일 판매량 기준 인기 상품 TOP 5를 조회합니다"
+        summary = "인기 상품 조회 (DB 기반)",
+        description = "최근 3일 판매량 기준 인기 상품 TOP 5를 조회합니다 (DB 집계)"
     )
     @GetMapping("/popular")
     public ResponseEntity<List<Product>> getPopularProducts() {
         log.info("[API] GET /api/products/popular");
 
         List<Product> products = productService.getPopularProducts();
+
+        return ResponseEntity.ok(products);
+    }
+
+    /**
+     * 실시간 인기 상품 조회 (Redis 기반)
+     *
+     * Use Case: UC-006 (실시간 버전)
+     * - GET /api/products/popular/realtime
+     * - Redis Sorted Set 기반 실시간 인기도 집계
+     * - 주문 즉시 반영
+     *
+     * @param topN 조회할 상위 개수 (기본 10개)
+     * @return 실시간 인기 상품 목록
+     */
+    @Operation(
+        summary = "실시간 인기 상품 조회 (Redis 기반)",
+        description = "Redis Sorted Set 기반으로 실시간 인기 상품을 조회합니다 (주문 즉시 반영)"
+    )
+    @GetMapping("/popular/realtime")
+    public ResponseEntity<List<Product>> getRealtimePopularProducts(
+            @RequestParam(defaultValue = "10") int topN) {
+
+        log.info("[API] GET /api/products/popular/realtime - topN: {}", topN);
+
+        List<Product> products = productService.getRealtimePopularProducts(topN);
+
+        return ResponseEntity.ok(products);
+    }
+
+    /**
+     * 실시간 인기 상품 조회 (통계 정보 포함)
+     *
+     * Use Case: UC-006 (실시간 버전 + 통계)
+     * - GET /api/products/popular/realtime/stats
+     * - 판매 수량, 순위 정보 포함
+     *
+     * @param topN 조회할 상위 개수 (기본 10개)
+     * @return 실시간 인기 상품 목록 (통계 포함)
+     */
+    @Operation(
+        summary = "실시간 인기 상품 조회 (통계 포함)",
+        description = "판매 수량, 순위 정보가 포함된 실시간 인기 상품을 조회합니다"
+    )
+    @GetMapping("/popular/realtime/stats")
+    public ResponseEntity<List<ProductService.PopularProductInfo>> getRealtimePopularProductsWithStats(
+            @RequestParam(defaultValue = "10") int topN) {
+
+        log.info("[API] GET /api/products/popular/realtime/stats - topN: {}", topN);
+
+        List<ProductService.PopularProductInfo> products =
+            productService.getRealtimePopularProductsWithStats(topN);
 
         return ResponseEntity.ok(products);
     }

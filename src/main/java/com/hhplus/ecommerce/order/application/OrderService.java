@@ -71,6 +71,7 @@ public class OrderService {
     private final UserCouponRepository userCouponRepository;
     private final BalanceHistoryRepository balanceHistoryRepository;
     private final StockHistoryRepository stockHistoryRepository;
+    private final com.hhplus.ecommerce.product.infrastructure.persistence.ProductRedisRepository productRedisRepository;
 
     // Services
     private final OrderSequenceService orderSequenceService;
@@ -248,6 +249,9 @@ public class OrderService {
 
             // Step 7-7: 재고 이력 기록
             recordStockHistories(orderLineItems, order);
+
+            // Step 7-8: 인기상품 집계 (Redis)
+            updatePopularProducts(orderLineItems);
 
             // Step 8: 장바구니 비우기
             cart.clear();
@@ -584,6 +588,35 @@ public class OrderService {
                 .build();
 
             stockHistoryRepository.save(history);
+        }
+    }
+
+    /**
+     * UC-012 Step 7-8: 인기상품 집계 (Redis)
+     *
+     * 결제 완료 후 주문된 상품들의 인기도 스코어를 증가시킵니다.
+     * Redis Sorted Set을 사용하여 실시간 인기상품 순위를 관리합니다.
+     *
+     * Redis 장애 시에도 주문 프로세스는 정상 진행됩니다.
+     * (인기상품 집계는 부가 기능으로 주문 성공에 영향을 주지 않음)
+     */
+    private void updatePopularProducts(List<OrderLineItem> items) {
+        try {
+            for (OrderLineItem item : items) {
+                Product product = item.getProduct();
+
+                // 인기도 스코어 증가 (판매 수량만큼)
+                productRedisRepository.incrementPopularityScore(product.getId(), item.getQuantity());
+
+                // 상품 정보 캐시 저장 (있으면 갱신)
+                productRedisRepository.cacheProductInfo(product);
+            }
+
+            log.debug("인기상품 집계 완료 - {} 개 상품", items.size());
+
+        } catch (Exception e) {
+            // Redis 장애 시에도 주문은 성공 처리
+            log.error("인기상품 집계 실패 (주문은 정상 처리됨)", e);
         }
     }
 
