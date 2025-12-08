@@ -48,6 +48,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ProductStatisticsRepository productStatisticsRepository;
+    private final com.hhplus.ecommerce.product.infrastructure.persistence.ProductRedisRepository productRedisRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedissonClient redissonClient;
 
@@ -267,5 +268,127 @@ public class ProductService {
                 .orElse(null))
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
+    }
+
+    /**
+     * 실시간 인기 상품 조회 (Redis 기반)
+     *
+     * Use Case: UC-006 (실시간 버전)
+     *
+     * 집계 기준:
+     * - Redis Sorted Set에 누적된 판매 수량 기준
+     * - 실시간 주문 반영
+     * - 상위 N개 조회
+     *
+     * @param topN 조회할 상위 개수 (기본 5개)
+     * @return 실시간 인기 상품 목록
+     */
+    public List<Product> getRealtimePopularProducts(int topN) {
+        log.info("[UC-006] 실시간 인기 상품 조회 (Redis) - TOP {}", topN);
+
+        try {
+            // 1. Redis에서 인기 상품 ID 조회 (Sorted Set - 판매 수량 기준)
+            List<Long> productIds = productRedisRepository.getTopPopularProductIds(topN);
+
+            if (productIds.isEmpty()) {
+                log.info("[UC-006] Redis 인기상품 데이터 없음 - 기본 목록 반환");
+                // Redis에 데이터가 없으면 기본 목록 반환
+                return productRepository.findAvailableProducts(
+                    org.springframework.data.domain.PageRequest.of(0, topN)
+                ).getContent();
+            }
+
+            // 2. 상품 정보 조회 (DB 또는 Redis 캐시)
+            List<Product> products = productRepository.findAllById(productIds);
+
+            // 3. 원래 순서 유지 (인기도 순)
+            List<Product> sortedProducts = productIds.stream()
+                .map(id -> products.stream()
+                    .filter(p -> p.getId().equals(id))
+                    .findFirst()
+                    .orElse(null))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+            log.info("[UC-006] 실시간 인기 상품 조회 완료 - {} 개 반환", sortedProducts.size());
+            return sortedProducts;
+
+        } catch (Exception e) {
+            log.error("[UC-006] 실시간 인기 상품 조회 실패 - 기본 목록 반환", e);
+            // Redis 장애 시 기본 목록 반환
+            return productRepository.findAvailableProducts(
+                org.springframework.data.domain.PageRequest.of(0, topN)
+            ).getContent();
+        }
+    }
+
+    /**
+     * 실시간 인기 상품 조회 (상세 정보 포함)
+     *
+     * Use Case: UC-006 (실시간 버전 + 판매 수량 포함)
+     *
+     * @param topN 조회할 상위 개수
+     * @return 실시간 인기 상품 목록 (판매 수량 포함)
+     */
+    public List<PopularProductInfo> getRealtimePopularProductsWithStats(int topN) {
+        log.info("[UC-006] 실시간 인기 상품 조회 (통계 포함) - TOP {}", topN);
+
+        try {
+            // 1. Redis에서 인기 상품 ID와 스코어 조회
+            List<com.hhplus.ecommerce.product.infrastructure.persistence.ProductRedisRepository.PopularProduct> popularProducts
+                = productRedisRepository.getTopPopularProducts(topN);
+
+            if (popularProducts.isEmpty()) {
+                log.info("[UC-006] Redis 인기상품 데이터 없음");
+                return List.of();
+            }
+
+            // 2. 상품 ID 추출
+            List<Long> productIds = popularProducts.stream()
+                .map(com.hhplus.ecommerce.product.infrastructure.persistence.ProductRedisRepository.PopularProduct::getProductId)
+                .toList();
+
+            // 3. 상품 정보 조회
+            List<Product> products = productRepository.findAllById(productIds);
+
+            // 4. 상품 정보 + 판매 수량 매핑
+            List<PopularProductInfo> result = popularProducts.stream()
+                .map(pp -> {
+                    Product product = products.stream()
+                        .filter(p -> p.getId().equals(pp.getProductId()))
+                        .findFirst()
+                        .orElse(null);
+
+                    if (product == null) {
+                        return null;
+                    }
+
+                    return PopularProductInfo.builder()
+                        .product(product)
+                        .salesCount(pp.getSalesCount())
+                        .rank(popularProducts.indexOf(pp) + 1L)
+                        .build();
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+            log.info("[UC-006] 실시간 인기 상품 조회 완료 (통계 포함) - {} 개 반환", result.size());
+            return result;
+
+        } catch (Exception e) {
+            log.error("[UC-006] 실시간 인기 상품 조회 실패 (통계 포함)", e);
+            return List.of();
+        }
+    }
+
+    /**
+     * 인기 상품 정보 DTO (상품 + 판매 통계)
+     */
+    @lombok.Builder
+    @lombok.Getter
+    public static class PopularProductInfo {
+        private Product product;      // 상품 정보
+        private Long salesCount;      // 판매 수량
+        private Long rank;            // 순위
     }
 }
