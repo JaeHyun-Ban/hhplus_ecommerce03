@@ -1,0 +1,12 @@
+# JMeter 테스트 결과 파일
+results/**/*.jtl
+results/**/*-report/
+results/*.log
+
+# JMeter 로그 파일
+jmeter.log
+jmeter.save.saveservice.output_format
+
+# 임시 파일
+*.tmp
+*.bak
