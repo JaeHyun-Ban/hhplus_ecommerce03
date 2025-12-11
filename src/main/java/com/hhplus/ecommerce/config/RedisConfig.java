@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -77,6 +78,28 @@ public class RedisConfig {
 
         template.afterPropertiesSet();
         return template;
+    }
+
+    /**
+     * StringRedisTemplate 설정
+     *
+     * 용도:
+     * - Lua Script 실행 결과 처리
+     * - 단순 문자열/숫자 저장 및 조회
+     *
+     * 직렬화:
+     * - Key: String
+     * - Value: String
+     * - Hash Key: String
+     * - Hash Value: String
+     *
+     * 장점:
+     * - Lua Script 결과가 String으로 직접 반환됨 (byte[] 변환 불필요)
+     * - 타입 캐스팅 복잡도 제거
+     */
+    @Bean
+    public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
+        return new StringRedisTemplate(connectionFactory);
     }
 
 }

@@ -2,11 +2,17 @@ package com.hhplus.ecommerce.order.application;
 
 import com.hhplus.ecommerce.cart.domain.Cart;
 import com.hhplus.ecommerce.cart.domain.CartItem;
+import com.hhplus.ecommerce.common.constants.LockConstants;
 import com.hhplus.ecommerce.coupon.domain.Coupon;
 import com.hhplus.ecommerce.coupon.domain.UserCoupon;
 import com.hhplus.ecommerce.order.domain.Order;
 import com.hhplus.ecommerce.order.domain.OrderItem;
 import com.hhplus.ecommerce.order.domain.OrderStatus;
+import com.hhplus.ecommerce.order.domain.Payment;
+import com.hhplus.ecommerce.order.domain.PaymentMethod;
+import com.hhplus.ecommerce.order.domain.PaymentStatus;
+import com.hhplus.ecommerce.order.domain.event.OrderCompletedEvent;
+import com.hhplus.ecommerce.order.domain.event.OrderCreatedEvent;
 import com.hhplus.ecommerce.product.domain.Product;
 import com.hhplus.ecommerce.product.domain.StockHistory;
 import com.hhplus.ecommerce.product.domain.StockTransactionType;
@@ -24,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -39,6 +46,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 주문 애플리케이션 서비스
@@ -71,7 +79,6 @@ public class OrderService {
     private final UserCouponRepository userCouponRepository;
     private final BalanceHistoryRepository balanceHistoryRepository;
     private final StockHistoryRepository stockHistoryRepository;
-    private final com.hhplus.ecommerce.product.infrastructure.persistence.ProductRedisRepository productRedisRepository;
 
     // Services
     private final OrderSequenceService orderSequenceService;
@@ -79,12 +86,11 @@ public class OrderService {
     // Redisson
     private final RedissonClient redissonClient;
 
+    // Event Publisher
+    private final ApplicationEventPublisher eventPublisher;
+
     // Self-reference for proxy invocation
     private OrderService self;
-
-    // 중요: 잔액 수정을 포함하므로 BalanceService와 동일한 락 키 사용
-    // 주문 생성 시 balance 차감이 발생하므로 같은 user의 balance 충전과 동기화 필요
-    private static final String LOCK_PREFIX = "balance:user:lock:";
 
     /**
      * Self-injection을 통한 프록시 참조 획득
@@ -98,43 +104,50 @@ public class OrderService {
     }
 
     /**
-     * 주문 생성 및 결제
+     * 주문 생성 (Saga 패턴 - 분산 트랜잭션)
      *
-     * Use Case: UC-012 (17단계 플로우)
+     * Use Case: UC-012 (비동기 이벤트 기반)
      *
      * Main Success Scenario:
      * 1. 사용자 장바구니 조회
-     * 2. 재고 확인
+     * 2. 재고 확인 (읽기만)
      * 3. 쿠폰 검증 (선택)
      * 4. 금액 계산
      * 5. 멱등성 키 확인
-     * 6. 트랜잭션 시작:
-     *    - 7-1: 재고 차감 (낙관적 락)
-     *    - 7-2: 잔액 차감 (비관적 락)
-     *    - 7-3: 쿠폰 사용
-     *    - 7-4a: 주문 번호 생성 (비관적 락 + REQUIRES_NEW)
-     *    - 7-4b: 주문 엔티티 생성
-     *    - 7-5: 쿠폰 적용 기록
-     *    - 7-6: 잔액 이력 기록
-     *    - 7-7: 재고 이력 기록
-     * 7. 장바구니 비우기
-     * 8. 주문 정보 반환
+     * 6. 주문 엔티티 생성 (PENDING 상태)
+     * 7. Payment 엔티티 생성 (PENDING 상태)
+     * 8. 장바구니 비우기
+     * 9. OrderCreatedEvent 발행 (AFTER_COMMIT)
+     *
+     * 비동기 이벤트 체인:
+     * - OrderCreatedEvent (주문 생성)
+     *   → StockDeductionEventListener (재고 차감)
+     *   → BalanceDeductionEvent (잔액 차감 트리거)
+     *   → BalanceDeductionEventListener (잔액 차감 + Payment 완료)
+     *   → OrderCompletedEvent (주문 완료)
+     *   → CouponUsageEventListener (쿠폰 사용)
+     *   → PopularProductEventListener (인기상품 집계)
      *
      * 동시성 제어:
      * - 분산락: Redisson RLock (userId 기반, 동일 사용자의 동시 주문 방지)
-     * - 재고: 낙관적 락 (@Version) + 재시도 (@Retryable, 최대 5회)
-     * - 잔액: 비관적 락 (SELECT FOR UPDATE)
+     * - 재고: 낙관적 락 (@Version) + 재시도 (@Retryable, 최대 5회) - 이벤트 리스너에서 처리
+     * - 잔액: 비관적 락 (SELECT FOR UPDATE) - 이벤트 리스너에서 처리
      * - 주문 번호: 비관적 락 (SELECT FOR UPDATE) + REQUIRES_NEW 트랜잭션
      *
      * 멱등성 보장:
      * - idempotencyKey로 중복 결제 방지 (네트워크 재시도 대응)
      *
+     * 보상 트랜잭션:
+     * - 재고 차감 실패 → 주문 취소
+     * - 잔액 차감 실패 → 재고 복구 + 주문 취소
+     * - 이벤트 소싱으로 실패 추적 및 재시도
+     *
      * @param userId 사용자 ID
      * @param userCouponId 사용할 쿠폰 ID (선택)
      * @param idempotencyKey 멱등성 키 (UUID)
-     * @return 생성된 주문
+     * @return 생성된 주문 (PENDING 상태, 비동기 처리 진행 중)
      * @throws IllegalArgumentException 잘못된 요청 (사용자 없음, 장바구니 비어있음, 쿠폰 오류 등)
-     * @throws IllegalStateException 비즈니스 규칙 위반 (재고 부족, 잔액 부족 등)
+     * @throws IllegalStateException 비즈니스 규칙 위반 (검증 단계)
      */
     @Retryable(
         value = {ObjectOptimisticLockingFailureException.class, org.springframework.dao.CannotAcquireLockException.class},
@@ -145,7 +158,9 @@ public class OrderService {
         log.info("[UC-012] 주문 생성 시작 - userId: {}, idempotencyKey: {}", userId, idempotencyKey);
 
         // Redisson 분산락 획득 (userId 기반)
-        String lockKey = LOCK_PREFIX + userId; // key생성
+        // 중요: 잔액 수정을 포함하므로 BalanceService와 동일한 락 키 사용
+        // 주문 생성 시 balance 차감이 발생하므로 같은 user의 balance 충전과 동기화 필요
+        String lockKey = LockConstants.Balance.USER_LOCK_PREFIX + userId; // key생성
         // key로 락 객체를 가져옴
         //>분산락을 조작하기 위한 proxy객체를 리턴한다.
         RLock lock = redissonClient.getLock(lockKey);
@@ -221,51 +236,52 @@ public class OrderService {
         // Step 6: 금액 계산
         OrderAmountCalculation calculation = calculateOrderAmount(orderLineItems, userCoupon);
 
-        // Step 7: 원자적 트랜잭션 시작
-        try {
-            // Step 7-1: 재고 차감 (낙관적 락)
-            decreaseProductStock(orderLineItems);
+        // Step 7: 주문 엔티티 생성 (PENDING 상태)
+        Order order = createOrderEntity(user, orderLineItems, calculation, idempotencyKey);
+        order = orderRepository.save(order);
 
-            // Step 7-2: 잔액 차감 (비관적 락)
-            BigDecimal balanceBefore = user.getBalance();
-            user.useBalance(calculation.getFinalAmount());
+        // Step 8: Payment 엔티티 생성 (PENDING 상태)
+        Payment payment = Payment.builder()
+            .order(order)
+            .amount(calculation.getFinalAmount())
+            .method(PaymentMethod.BALANCE)  // 기본값: 잔액 결제
+            .status(PaymentStatus.PENDING)
+            .build();
+        order.setPayment(payment);
+        order = orderRepository.save(order);
 
-            // Step 7-3: 쿠폰 사용 처리
-            if (userCoupon != null) {
-                userCoupon.markAsUsed();
-            }
+        // Step 9: 장바구니 비우기
+        cart.clear();
 
-            // Step 7-4: 주문 생성
-            Order order = createOrderEntity(user, orderLineItems, calculation, idempotencyKey);
-            order = orderRepository.save(order);
+        // Step 10: OrderCreatedEvent 발행
+        // 이벤트 리스너에서 재고 차감 → 잔액 차감 → 결제 완료 → 쿠폰 사용 → 인기상품 집계
+        List<OrderCreatedEvent.OrderProductInfo> orderProducts = orderLineItems.stream()
+            .map(item -> OrderCreatedEvent.OrderProductInfo.builder()
+                .productId(item.getProduct().getId())
+                .quantity(item.getQuantity())
+                .price(item.getProduct().getPrice())
+                .build())
+            .toList();
 
-            // Step 7-5: 쿠폰 적용 기록
-            if (userCoupon != null) {
-                order.applyCoupon(userCoupon, calculation.getDiscountAmount());
-            }
+        OrderCreatedEvent event = OrderCreatedEvent.builder()
+            .orderId(order.getId())
+            .orderNumber(order.getOrderNumber())
+            .userId(user.getId())
+            .finalAmount(calculation.getFinalAmount())
+            .orderProducts(orderProducts)
+            .userCouponId(userCoupon != null ? userCoupon.getId() : null)
+            .discountAmount(userCoupon != null ? calculation.getDiscountAmount() : BigDecimal.ZERO)
+            .build();
 
-            // Step 7-6: 잔액 이력 기록
-            recordBalanceHistory(user, calculation.getFinalAmount(), balanceBefore, order);
+        eventPublisher.publishEvent(event);
 
-            // Step 7-7: 재고 이력 기록
-            recordStockHistories(orderLineItems, order);
+        log.info("[UC-012] 주문 생성 이벤트 발행 - orderId: {}, orderNumber: {}, 상품 수: {}",
+                 order.getId(), order.getOrderNumber(), orderProducts.size());
 
-            // Step 7-8: 인기상품 집계 (Redis)
-            updatePopularProducts(orderLineItems);
+        log.info("[UC-012] 주문 생성 완료 (비동기 처리 시작) - orderId: {}, orderNumber: {}",
+                 order.getId(), order.getOrderNumber());
 
-            // Step 8: 장바구니 비우기
-            cart.clear();
-
-            log.info("[UC-012] 주문 생성 완료 - orderId: {}, orderNumber: {}",
-                     order.getId(), order.getOrderNumber());
-
-            return order;
-
-        } catch (IllegalStateException e) {
-            // 도메인 로직 예외 (재고 부족, 잔액 부족 등)
-            log.warn("[UC-012] 주문 생성 실패 - {}", e.getMessage());
-            throw e;
-        }
+        return order;
     }
 
     /**
@@ -478,7 +494,10 @@ public class OrderService {
     }
 
     /**
-     * UC-012 Step 7-4b: 주문 엔티티 생성
+     * UC-012 Step 7: 주문 엔티티 생성 (PENDING 상태)
+     *
+     * 비동기 이벤트 체인에서 재고 차감 및 잔액 차감이 성공하면
+     * PENDING → PAID 상태로 변경됨
      */
     private Order createOrderEntity(
             User user,
@@ -486,7 +505,7 @@ public class OrderService {
             OrderAmountCalculation calculation,
             String idempotencyKey) {
 
-        // 주문 번호 생성 (Step 7-4a)
+        // 주문 번호 생성
         String orderNumber = generateOrderNumber();
 
         Order order = Order.builder()
@@ -495,9 +514,9 @@ public class OrderService {
             .totalAmount(calculation.getTotalAmount())
             .discountAmount(calculation.getDiscountAmount())
             .finalAmount(calculation.getFinalAmount())
-            .status(OrderStatus.PAID)
+            .status(OrderStatus.PENDING)  // PENDING 상태로 시작
             .orderedAt(LocalDateTime.now())
-            .paidAt(LocalDateTime.now())
+            .paidAt(null)  // 결제 완료 시 설정됨
             .idempotencyKey(idempotencyKey)
             .build();
 
@@ -591,34 +610,6 @@ public class OrderService {
         }
     }
 
-    /**
-     * UC-012 Step 7-8: 인기상품 집계 (Redis)
-     *
-     * 결제 완료 후 주문된 상품들의 인기도 스코어를 증가시킵니다.
-     * Redis Sorted Set을 사용하여 실시간 인기상품 순위를 관리합니다.
-     *
-     * Redis 장애 시에도 주문 프로세스는 정상 진행됩니다.
-     * (인기상품 집계는 부가 기능으로 주문 성공에 영향을 주지 않음)
-     */
-    private void updatePopularProducts(List<OrderLineItem> items) {
-        try {
-            for (OrderLineItem item : items) {
-                Product product = item.getProduct();
-
-                // 인기도 스코어 증가 (판매 수량만큼)
-                productRedisRepository.incrementPopularityScore(product.getId(), item.getQuantity());
-
-                // 상품 정보 캐시 저장 (있으면 갱신)
-                productRedisRepository.cacheProductInfo(product);
-            }
-
-            log.debug("인기상품 집계 완료 - {} 개 상품", items.size());
-
-        } catch (Exception e) {
-            // Redis 장애 시에도 주문은 성공 처리
-            log.error("인기상품 집계 실패 (주문은 정상 처리됨)", e);
-        }
-    }
 
     /**
      * UC-015: 재고 복구

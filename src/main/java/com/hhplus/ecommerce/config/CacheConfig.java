@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.hibernate5.jakarta.Hibernate5JakartaModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.hhplus.ecommerce.common.constants.CacheConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
@@ -75,7 +76,7 @@ public class CacheConfig {
 
         // 기본 캐시 설정
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-            .entryTtl(Duration.ofMinutes(10))  // 기본 TTL: 10분
+            .entryTtl(Duration.ofMinutes(CacheConstants.TtlMinutes.DEFAULT))  // 기본 TTL: 10분
             .serializeKeysWith(
                 RedisSerializationContext.SerializationPair.fromSerializer(
                     new StringRedisSerializer()
@@ -92,20 +93,20 @@ public class CacheConfig {
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
 
         // 상품 정보: 1시간 캐싱 (변경 빈도 낮음)
-        cacheConfigurations.put("product:info",
-            defaultConfig.entryTtl(Duration.ofHours(1)));
+        cacheConfigurations.put(CacheConstants.Names.PRODUCT_INFO,
+            defaultConfig.entryTtl(Duration.ofHours(CacheConstants.TtlHours.PRODUCT_INFO)));
 
         // 인기 상품 목록: 5분 캐싱 (주기적 갱신)
-        cacheConfigurations.put("product:popular",
-            defaultConfig.entryTtl(Duration.ofMinutes(5)));
+        cacheConfigurations.put(CacheConstants.Names.PRODUCT_POPULAR,
+            defaultConfig.entryTtl(Duration.ofMinutes(CacheConstants.TtlMinutes.PRODUCT_POPULAR)));
 
         // 쿠폰 메타데이터: 30분 캐싱 (발급 기간 중 변경 없음)
-        cacheConfigurations.put("coupon:info",
-            defaultConfig.entryTtl(Duration.ofMinutes(30)));
+        cacheConfigurations.put(CacheConstants.Names.COUPON_INFO,
+            defaultConfig.entryTtl(Duration.ofMinutes(CacheConstants.TtlMinutes.COUPON_INFO)));
 
         // 사용자 프로필: 1시간 캐싱 (변경 빈도 낮음)
-        cacheConfigurations.put("user:profile",
-            defaultConfig.entryTtl(Duration.ofHours(1)));
+        cacheConfigurations.put(CacheConstants.Names.USER_PROFILE,
+            defaultConfig.entryTtl(Duration.ofHours(CacheConstants.TtlHours.USER_PROFILE)));
 
         log.info("Redis 캐시 매니저 초기화 완료 - 캐시 종류: {}", cacheConfigurations.size());
 

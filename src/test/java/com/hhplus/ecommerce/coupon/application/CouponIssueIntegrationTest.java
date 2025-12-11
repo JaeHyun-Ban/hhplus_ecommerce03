@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.*;
 @Testcontainers
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DisplayName("CouponService 통합 테스트 - 쿠폰 발급")
 class CouponIssueIntegrationTest {
 

@@ -42,6 +42,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.awaitility.Awaitility.*;
 
 /**
  * OrderService 통합 테스트 - 주문 생성 (TestContainers 사용)
@@ -156,8 +157,14 @@ class OrderCreateIntegrationTest {
             assertThat(result.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(220000));
             assertThat(result.getDiscountAmount()).isEqualByComparingTo(BigDecimal.ZERO);
             assertThat(result.getFinalAmount()).isEqualByComparingTo(BigDecimal.valueOf(220000));
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.PAID);
             assertThat(result.getOrderNumber()).startsWith("ORD-");
+
+            // 비동기 이벤트 리스너 완료 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    Order updatedOrder = orderRepository.findById(result.getId()).orElseThrow();
+                    assertThat(updatedOrder.getStatus()).isEqualTo(OrderStatus.PAID);
+                });
 
             // 실제 DB에서 확인
             Optional<Order> savedOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
@@ -200,16 +207,22 @@ class OrderCreateIntegrationTest {
             assertThat(result.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(220000));
             assertThat(result.getDiscountAmount()).isEqualByComparingTo(BigDecimal.valueOf(22000)); // 10% 할인
             assertThat(result.getFinalAmount()).isEqualByComparingTo(BigDecimal.valueOf(198000)); // 220000 - 22000
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.PAID);
 
-            // 쿠폰이 사용됨으로 변경되었는지 확인
-            UserCoupon usedCoupon = userCouponRepository.findById(userCouponId).orElseThrow();
-            assertThat(usedCoupon.getStatus()).isEqualTo(UserCouponStatus.USED);
-            assertThat(usedCoupon.getUsedAt()).isNotNull();
+            // 비동기 이벤트 리스너 완료 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    Order updatedOrder = orderRepository.findById(result.getId()).orElseThrow();
+                    assertThat(updatedOrder.getStatus()).isEqualTo(OrderStatus.PAID);
 
-            // 잔액 확인
-            User user = userRepository.findById(testUser.getId()).orElseThrow();
-            assertThat(user.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(302000)); // 500000 - 198000
+                    // 쿠폰이 사용됨으로 변경되었는지 확인
+                    UserCoupon usedCoupon = userCouponRepository.findById(userCouponId).orElseThrow();
+                    assertThat(usedCoupon.getStatus()).isEqualTo(UserCouponStatus.USED);
+                    assertThat(usedCoupon.getUsedAt()).isNotNull();
+
+                    // 잔액 확인
+                    User user = userRepository.findById(testUser.getId()).orElseThrow();
+                    assertThat(user.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(302000)); // 500000 - 198000
+                });
         }
 
         @Test
@@ -250,8 +263,12 @@ class OrderCreateIntegrationTest {
             assertThat(result.getOrderItems()).hasSize(2);
             assertThat(result.getTotalAmount()).isEqualByComparingTo(BigDecimal.valueOf(220000));
 
-            // 재고 이력이 2개 생성되었는지 확인
-            assertThat(stockHistoryRepository.findAll()).hasSize(2);
+            // 비동기 이벤트 리스너 완료 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    // 재고 이력이 2개 생성되었는지 확인
+                    assertThat(stockHistoryRepository.findAll()).hasSize(2);
+                });
         }
 
         @Test
@@ -296,7 +313,7 @@ class OrderCreateIntegrationTest {
             product.decreaseStock(49); // 재고를 1로 만듦 (주문 수량은 2)
             productRepository.save(product);
 
-            // When & Then
+            // When & Then - 주문 생성 시점에 재고 검증하여 예외 발생
             assertThatThrownBy(() -> orderService.createOrder(userId, null, idempotencyKey))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("재고가 부족합니다");
@@ -313,10 +330,16 @@ class OrderCreateIntegrationTest {
             Long userId = poorUser.getId();
             String idempotencyKey = UUID.randomUUID().toString();
 
-            // When & Then
-            assertThatThrownBy(() -> orderService.createOrder(userId, null, idempotencyKey))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("잔액이 부족합니다");
+            // When
+            Order result = orderService.createOrder(userId, null, idempotencyKey);
+
+            // Then - 이벤트 리스너에서 보상 트랜잭션으로 주문 취소됨
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    Order updatedOrder = orderRepository.findById(result.getId()).orElseThrow();
+                    assertThat(updatedOrder.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+                    assertThat(updatedOrder.getCancellationReason()).contains("잔액");
+                });
         }
 
         @Test
@@ -357,7 +380,14 @@ class OrderCreateIntegrationTest {
             // 쿠폰을 먼저 사용하는 주문 생성
             Long userId = testUser.getId();
             String firstIdempotencyKey = UUID.randomUUID().toString();
-            orderService.createOrder(userId, testUserCoupon.getId(), firstIdempotencyKey);
+            Order firstOrder = orderService.createOrder(userId, testUserCoupon.getId(), firstIdempotencyKey);
+
+            // 비동기 이벤트 리스너로 쿠폰이 사용됨으로 변경될 때까지 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    UserCoupon usedCoupon = userCouponRepository.findById(testUserCoupon.getId()).orElseThrow();
+                    assertThat(usedCoupon.getStatus()).isEqualTo(UserCouponStatus.USED);
+                });
 
             // 다른 주문을 위해 장바구니 다시 채우기
             createAndSaveCartItem(testCart, testProduct1, 1);

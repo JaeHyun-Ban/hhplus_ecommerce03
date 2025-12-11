@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @DisplayName("주문 통합 플로우 동시성 테스트")
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
-@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class OrderIntegrationConcurrencyTest {
 
     @Autowired
@@ -85,6 +85,9 @@ class OrderIntegrationConcurrencyTest {
     @Autowired
     private OrderSequenceRepository orderSequenceRepository;
 
+    @Autowired
+    private com.hhplus.ecommerce.order.infrastructure.persistence.PaymentRepository paymentRepository;
+
     private Product testProduct;
     private List<User> testUsers;
     private Category testCategory;
@@ -94,6 +97,7 @@ class OrderIntegrationConcurrencyTest {
         // 기존 데이터 정리 (외래키 제약조건 순서 고려)
         cartItemRepository.deleteAll();
         cartRepository.deleteAll();
+        paymentRepository.deleteAll();
         orderRepository.deleteAll();
         orderSequenceRepository.deleteAll();
         stockHistoryRepository.deleteAll();
@@ -126,7 +130,7 @@ class OrderIntegrationConcurrencyTest {
         for (int i = 1; i <= 50; i++) {
             User user = User.builder()
                     .email("integration_test_" + i + "@test.com")
-                    .password("password")
+                    .password("password123")
                     .name("통합테스트사용자" + i)
                     .balance(BigDecimal.valueOf(100000))  // 충분한 잔액
                     .role(UserRole.USER)
@@ -208,6 +212,9 @@ class OrderIntegrationConcurrencyTest {
 
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
+
+        // 비동기 이벤트 처리 완료 대기 (재고 차감, 잔액 차감, 쿠폰 사용 등)
+        Thread.sleep(5000);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -327,6 +334,9 @@ class OrderIntegrationConcurrencyTest {
 
         latch.await(60, TimeUnit.SECONDS);
         executorService.shutdown();
+
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
 
         // Then: 검증
         log.info("성공: {}건, 실패: {}건", successCount.get(), failCount.get());
