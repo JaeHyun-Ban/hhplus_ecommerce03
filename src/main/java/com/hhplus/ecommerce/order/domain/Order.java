@@ -45,6 +45,9 @@ public class Order {
     @Builder.Default
     private List<OrderCoupon> orderCoupons = new ArrayList<>();
 
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Payment payment;
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
@@ -136,5 +139,10 @@ public class Order {
         }
         this.discountAmount = discountAmount;
         this.finalAmount = this.totalAmount.subtract(discountAmount);
+    }
+
+    // 비즈니스 로직: Payment 설정
+    public void setPayment(Payment payment) {
+        this.payment = payment;
     }
 }
