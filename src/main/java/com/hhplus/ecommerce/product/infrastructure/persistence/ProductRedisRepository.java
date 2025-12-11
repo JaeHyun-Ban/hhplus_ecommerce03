@@ -1,5 +1,7 @@
 package com.hhplus.ecommerce.product.infrastructure.persistence;
 
+import com.hhplus.ecommerce.common.constants.CacheConstants;
+import com.hhplus.ecommerce.common.constants.RedisConstants;
 import com.hhplus.ecommerce.product.domain.Product;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,13 +46,6 @@ public class ProductRedisRepository {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // Redis Key Prefix
-    private static final String POPULAR_PRODUCTS_KEY = "popular:products";
-    private static final String PRODUCT_INFO_PREFIX = "info:product:";
-
-    // TTL 설정
-    private static final long PRODUCT_INFO_TTL_HOURS = 24; // 상품 정보 캐시: 24시간
-
     /**
      * 인기상품 스코어 증가 (주문 시 호출)
      *
@@ -64,7 +59,7 @@ public class ProductRedisRepository {
         try {
             // Sorted Set에 스코어 증가 (원자적 연산)
             Double newScore = redisTemplate.opsForZSet()
-                .incrementScore(POPULAR_PRODUCTS_KEY, productId.toString(), quantity.doubleValue());
+                .incrementScore(RedisConstants.Product.POPULAR_RANKING, productId.toString(), quantity.doubleValue());
 
             log.debug("인기상품 스코어 증가 - productId: {}, quantity: {}, newScore: {}",
                      productId, quantity, newScore);
@@ -83,7 +78,7 @@ public class ProductRedisRepository {
      * @param product 상품 엔티티
      */
     public void cacheProductInfo(Product product) {
-        String key = PRODUCT_INFO_PREFIX + product.getId();
+        String key = RedisConstants.Product.INFO_REDIS_PREFIX + product.getId();
 
         try {
             Map<String, String> productInfo = new HashMap<>();
@@ -99,7 +94,7 @@ public class ProductRedisRepository {
             redisTemplate.opsForHash().putAll(key, productInfo);
 
             // TTL 설정
-            redisTemplate.expire(key, PRODUCT_INFO_TTL_HOURS, TimeUnit.HOURS);
+            redisTemplate.expire(key, CacheConstants.TtlHours.PRODUCT_INFO_REDIS, TimeUnit.HOURS);
 
             log.debug("상품 정보 캐시 저장 - productId: {}", product.getId());
 
@@ -115,7 +110,7 @@ public class ProductRedisRepository {
      * @return 상품 정보 Map (캐시 없으면 null)
      */
     public Map<String, String> getCachedProductInfo(Long productId) {
-        String key = PRODUCT_INFO_PREFIX + productId;
+        String key = RedisConstants.Product.INFO_REDIS_PREFIX + productId;
 
         try {
             Map<Object, Object> rawMap = redisTemplate.opsForHash().entries(key);
@@ -148,7 +143,7 @@ public class ProductRedisRepository {
         try {
             // Sorted Set에서 높은 스코어 순으로 조회 (ZREVRANGE)
             Set<Object> productIds = redisTemplate.opsForZSet()
-                .reverseRange(POPULAR_PRODUCTS_KEY, 0, topN - 1);
+                .reverseRange(RedisConstants.Product.POPULAR_RANKING, 0, topN - 1);
 
             if (productIds == null || productIds.isEmpty()) {
                 log.debug("인기상품 데이터 없음");
@@ -175,7 +170,7 @@ public class ProductRedisRepository {
         try {
             // Sorted Set에서 높은 스코어 순으로 조회 (WITH SCORES)
             Set<ZSetOperations.TypedTuple<Object>> tuples = redisTemplate.opsForZSet()
-                .reverseRangeWithScores(POPULAR_PRODUCTS_KEY, 0, topN - 1);
+                .reverseRangeWithScores(RedisConstants.Product.POPULAR_RANKING, 0, topN - 1);
 
             if (tuples == null || tuples.isEmpty()) {
                 log.debug("인기상품 데이터 없음");
@@ -206,7 +201,7 @@ public class ProductRedisRepository {
         try {
             // Sorted Set에서 순위 조회 (ZREVRANK - 높은 스코어부터 순위 매김)
             Long rank = redisTemplate.opsForZSet()
-                .reverseRank(POPULAR_PRODUCTS_KEY, productId.toString());
+                .reverseRank(RedisConstants.Product.POPULAR_RANKING, productId.toString());
 
             // rank는 0부터 시작하므로 +1
             return rank != null ? rank + 1 : null;
@@ -226,7 +221,7 @@ public class ProductRedisRepository {
     public Long getProductScore(Long productId) {
         try {
             Double score = redisTemplate.opsForZSet()
-                .score(POPULAR_PRODUCTS_KEY, productId.toString());
+                .score(RedisConstants.Product.POPULAR_RANKING, productId.toString());
 
             return score != null ? score.longValue() : 0L;
 
@@ -245,7 +240,7 @@ public class ProductRedisRepository {
      */
     public void resetPopularProducts() {
         try {
-            redisTemplate.delete(POPULAR_PRODUCTS_KEY);
+            redisTemplate.delete(RedisConstants.Product.POPULAR_RANKING);
             log.info("인기상품 데이터 초기화 완료");
 
         } catch (Exception e) {
@@ -263,7 +258,7 @@ public class ProductRedisRepository {
      * @param productId 상품 ID
      */
     public void evictProductCache(Long productId) {
-        String key = PRODUCT_INFO_PREFIX + productId;
+        String key = RedisConstants.Product.INFO_REDIS_PREFIX + productId;
 
         try {
             redisTemplate.delete(key);
@@ -281,11 +276,11 @@ public class ProductRedisRepository {
      */
     public PopularProductStats getStats() {
         try {
-            Long totalProducts = redisTemplate.opsForZSet().size(POPULAR_PRODUCTS_KEY);
+            Long totalProducts = redisTemplate.opsForZSet().size(RedisConstants.Product.POPULAR_RANKING);
 
             // 전체 판매 수량 합계
             Set<ZSetOperations.TypedTuple<Object>> all = redisTemplate.opsForZSet()
-                .reverseRangeWithScores(POPULAR_PRODUCTS_KEY, 0, -1);
+                .reverseRangeWithScores(RedisConstants.Product.POPULAR_RANKING, 0, -1);
 
             long totalSales = 0L;
             if (all != null) {
