@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.product.application;
 
+import com.hhplus.ecommerce.common.constants.SchedulerConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -45,8 +46,6 @@ public class ProductStatisticsScheduler {
     private final ProductStatisticsService productStatisticsService;
     private final RedissonClient redissonClient;
 
-    private static final String LOCK_KEY = "lock:batch:product-statistics:daily";
-
     /**
      * 일일 상품 통계 집계 배치 작업
      *
@@ -72,13 +71,17 @@ public class ProductStatisticsScheduler {
      * - 집계된 상품 수 로그 출력
      * - 실행 시간 측정
      */
-    @Scheduled(cron = "0 0 1 * * *")
+    @Scheduled(cron = SchedulerConstants.Cron.DAILY_1AM)
     public void aggregateDailyStatistics() {
-        RLock lock = redissonClient.getLock(LOCK_KEY);
+        RLock lock = redissonClient.getLock(SchedulerConstants.LockKeys.PRODUCT_STATISTICS_DAILY);
 
         try {
-            // 락 획득 시도: 1초 대기, 5분 후 자동 해제
-            boolean isLocked = lock.tryLock(1, 300, TimeUnit.SECONDS);
+            // 락 획득 시도: 0초 대기 (즉시 실패), 5분 후 자동 해제
+            boolean isLocked = lock.tryLock(
+                SchedulerConstants.Timeout.WAIT_TIME_SECONDS,
+                SchedulerConstants.Timeout.LEASE_TIME_SECONDS,
+                TimeUnit.SECONDS
+            );
 
             if (!isLocked) {
                 log.warn("[스케줄러] 분산락 획득 실패 - 다른 서버가 배치 실행 중");
