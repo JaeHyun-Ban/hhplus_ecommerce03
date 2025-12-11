@@ -36,6 +36,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.awaitility.Awaitility.*;
 
 /**
  * OrderService 통합 테스트 - 주문 조회 (TestContainers 사용)
@@ -126,6 +127,13 @@ class OrderQueryIntegrationTest {
             Order createdOrder = orderService.createOrder(testUser.getId(), null, idempotencyKey);
             Long orderId = createdOrder.getId();
 
+            // 비동기 이벤트 리스너 완료 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    Order order = orderRepository.findById(orderId).orElseThrow();
+                    assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+                });
+
             // When
             Order result = orderService.getOrder(orderId);
 
@@ -148,6 +156,14 @@ class OrderQueryIntegrationTest {
             String idempotencyKey = UUID.randomUUID().toString();
             Order createdOrder = orderService.createOrder(testUser.getId(), null, idempotencyKey);
             String orderNumber = createdOrder.getOrderNumber();
+            Long orderId = createdOrder.getId();
+
+            // 비동기 이벤트 리스너 완료 대기
+            await().atMost(java.time.Duration.ofSeconds(5))
+                .untilAsserted(() -> {
+                    Order order = orderRepository.findById(orderId).orElseThrow();
+                    assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+                });
 
             // When
             Order result = orderService.getOrderByNumber(orderNumber);

@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.*;
 @Testcontainers
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DisplayName("CouponRedisRepository Sorted Set 단위 테스트")
 class CouponRedisRepositoryTest {
 
