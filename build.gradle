@@ -2,7 +2,7 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.5.7'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'jacoco' // JaCoCo 플러그인 추가
+    id 'jacoco'
 }
 
 group = 'com.hhplus'
@@ -35,7 +35,6 @@ dependencies {
     implementation 'org.redisson:redisson-spring-boot-starter:3.24.3'
 
     // Jackson Hibernate5 Module (Hibernate 엔티티 직렬화 지원)
-    // 버전은 Spring Boot에서 관리하도록 생략
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-hibernate5-jakarta'
 
     // Springdoc OpenAPI (Swagger UI)
@@ -61,6 +60,9 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers:1.19.3'
     testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
     testImplementation 'org.testcontainers:mysql:1.19.3'
+
+    // Awaitility (비동기 테스트)
+    testImplementation 'org.awaitility:awaitility:4.2.0'
 }
 
 tasks.named('test') {

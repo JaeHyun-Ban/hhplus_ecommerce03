@@ -49,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @Import(TestContainersConfig.class)
 @ActiveProfiles("test")
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @DisplayName("ProductStatisticsService 통합 테스트")
 class ProductStatisticsServiceTest {
 
@@ -67,6 +68,9 @@ class ProductStatisticsServiceTest {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private com.hhplus.ecommerce.order.infrastructure.persistence.PaymentRepository paymentRepository;
 
     @Autowired
     private ProductRepository productRepository;
@@ -88,6 +92,7 @@ class ProductStatisticsServiceTest {
     @BeforeEach
     void setUp() {
         // 데이터 정리
+        paymentRepository.deleteAll();
         orderRepository.deleteAll();
         productStatisticsRepository.deleteAll();
         productRepository.deleteAll();
@@ -97,7 +102,7 @@ class ProductStatisticsServiceTest {
         // 테스트 사용자 생성
         testUser = User.builder()
                 .email("test@test.com")
-                .password("password")
+                .password("password123")
                 .name("테스트사용자")
                 .balance(BigDecimal.valueOf(10000000))
                 .role(UserRole.USER)

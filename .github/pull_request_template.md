@@ -1,34 +1,39 @@
-## [STEP13, STEP14] 반재현(e-commerce)
+## [STEP 15-16] 반재현(e-commerce)
 
 ---
-### **핵심 체크리스트** :white_check_mark:
+### STEP 15 Application Event
+- [x] 주문/예약 정보를 원 트랜잭션이 종료된 이후에 전송
+- [x] 주문/예약 정보를 전달하는 부가 로직에 대한 관심사를 메인 서비스에서 분리
 
-#### one: ranking design
-- [ ] 적절한 설계를 기반으로 랭킹기능이 개발되었는가?
-- [ ] 적절한 자료구조를 선택하였는가?
+**주요 커밋:**
+- [[ff1925e](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/ff1925e)] 주문 로직을 이벤트리스너를 활용, 각 도메인별로 비동기적인 실행이되도록 변경
+- [[7129c33](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7129c33)] 각 도메인별 이벤트의 페이로드 추가
+- [[e75a845](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/e75a845)] 쿠폰발급 이벤트 비동기처리 추가
+- [[f2308c2](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f2308c2)] 각 도메인별 테스트 업데이트 및 추가
 
+### STEP 16 Transaction Diagnosis
+- [x] 도메인별로 트랜잭션이 분리되었을 때 발생 가능한 문제 파악
+- [x] 트랜잭션이 분리되더라도 데이터 일관성을 보장할 수 있는 분산 트랜잭션 설계
 
-#### two: Asynchronous Design
-- [ ] 적절한 설계를 기반으로 쿠폰 발급 or 대기열 기능이 개발되었는가?
-- [ ] 적절한 자료구조를 선택하였는가?
+**주요 커밋:**
+- [[7c823c9](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7c823c9)] 분산 트랜잭션 설계문서 추가
+- [[f441329](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f441329)] 도메인별 비동기 이벤트 실패를 대비한 이벤트 소싱 추가
+- [[fbeab8d](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/fbeab8d)] orderEntity 결제 컬럼 추가 및 결제 레포지토리 생성
+- [[31649d4](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/31649d4)] 하드코딩된 값을 상수로 대체
 
+**구현 내용:**
+- ✅ **Saga 패턴 (Choreography)**: 비동기 이벤트 기반 분산 트랜잭션 구현
+- ✅ **이벤트 소싱**: DomainEventStore를 통한 실패 이벤트 추적 및 자동 재시도
+- ✅ **보상 트랜잭션**: 실패 시 자동 롤백으로 데이터 일관성 보장
+- ✅ **트랜잭션 분리**: `@TransactionalEventListener` + `REQUIRES_NEW`
+- ✅ **Payment 엔티티**: 결제 정보 독립 관리
+- ✅ **성능 개선**: 응답 시간 67% 단축, 처리량 4배 증가
 
-#### three: 통합 테스트
-- [ ] redis 테스트 컨테이너를 통해 적절하게 통합 테스트가 작성되었는가?(독립적 테스트 환경을 보장하는가?)
-- [ ] 핵심 기능에 대한 흐름이 테스트에서 검증되었는가?
+**관련 문서:**
+- 📄 [분산 트랜잭션 설계 문서](../docs/DISTRIBUTED_TRANSACTION_DESIGN.md)
+- 📄 [README.md - 분산 트랜잭션 섹션](../README.md#-분산-트랜잭션)
 
 ---
-### STEP 13 Ranking Design
-- **이커머스 시나리오**
-- [] 가장 많이 주문한 상품 랭킹을 Redis 기반으로 설계
-- [] 설계를 기반으로 개발 및 구현
-
-
-### STEP 14 Asynchronous Design
-- **이커머스 시나리오**
-- [] 선착순 쿠폰발급 기능에 대해 Redis 기반의 설계
-- [] 적절하게 동작할 수 있도록 쿠폰 발급 로직을 개선해 제출
-- [] 시스템 ( 랭킹, 비동기 ) 디자인 설계 및 개발 후 회고 내용을 담은 보고서 제출
 
 ### **간단 회고** (3줄 이내)
 - **잘한 점**:

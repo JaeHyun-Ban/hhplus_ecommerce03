@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.user.application;
 
+import com.hhplus.ecommerce.common.constants.LockConstants;
 import com.hhplus.ecommerce.user.domain.BalanceHistory;
 import com.hhplus.ecommerce.user.domain.BalanceTransactionType;
 import com.hhplus.ecommerce.user.domain.User;
@@ -46,10 +47,6 @@ public class BalanceService {
     private final RedissonClient redissonClient;
     private final org.springframework.context.ApplicationContext applicationContext;
 
-    private static final String BALANCE_LOCK_PREFIX = "balance:user:lock:";
-    private static final long LOCK_WAIT_TIME = 10L;     // 락 획득 대기 시간 (초)
-    private static final long LOCK_LEASE_TIME = 10L;    // 락 자동 해제 시간 (초)
-
     /**
      * 잔액 충전
      *
@@ -85,12 +82,16 @@ public class BalanceService {
         validateChargeAmount(amount);
 
         // Step 2: 분산 락 획득
-        String lockKey = BALANCE_LOCK_PREFIX + userId;
+        String lockKey = LockConstants.Balance.USER_LOCK_PREFIX + userId;
         RLock lock = redissonClient.getLock(lockKey);
 
         try {
             // 락 획득 시도: 10초 대기, 10초 후 자동 해제
-            boolean isLocked = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
+            boolean isLocked = lock.tryLock(
+                LockConstants.Timeout.WAIT_TIME_SECONDS,
+                LockConstants.Timeout.LEASE_TIME_SECONDS,
+                TimeUnit.SECONDS
+            );
 
             if (!isLocked) {
                 log.warn("잔액 충전 락 획득 실패 - userId: {}", userId);

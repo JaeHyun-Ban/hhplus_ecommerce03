@@ -48,7 +48,7 @@ class ProductCachePerformanceTest {
     @BeforeEach
     void setUp() {
         // 캐시 초기화
-        Objects.requireNonNull(cacheManager.getCache("product:info")).clear();
+        Objects.requireNonNull(cacheManager.getCache("product-info")).clear();
 
         // 테스트 데이터 생성
         testProduct = Product.builder()
@@ -157,7 +157,7 @@ class ProductCachePerformanceTest {
         productService.getProduct(productId);
 
         // Then: 캐시 확인
-        var cache = cacheManager.getCache("product:info");
+        var cache = cacheManager.getCache("product-info");
         assertThat(cache).isNotNull();
 
         var cachedValue = cache.get(productId);

@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @DisplayName("재고 차감 동시성 테스트")
 @org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
-@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class StockConcurrencyTest {
 
     @Autowired
@@ -128,7 +128,7 @@ class StockConcurrencyTest {
         for (int i = 1; i <= 100; i++) {
             User user = User.builder()
                     .email("stock_test_" + i + "@test.com")
-                    .password("password")
+                    .password("password123")
                     .name("재고테스트사용자" + i)
                     .balance(BigDecimal.valueOf(100000))  // 충분한 잔액
                     .role(UserRole.USER)
@@ -218,6 +218,9 @@ class StockConcurrencyTest {
         boolean completed = latch.await(60, TimeUnit.SECONDS);
         executorService.shutdown();
 
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
+
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
 
@@ -295,6 +298,9 @@ class StockConcurrencyTest {
         // 모든 스레드가 완료될 때까지 대기 (최대 120초)
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
+
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -403,6 +409,9 @@ class StockConcurrencyTest {
         latch.await(30, TimeUnit.SECONDS);
         executorService.shutdown();
 
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
+
         // Then: 정확히 10명만 성공
         log.info("50명 주문 결과 - 성공: {}, 실패: {}", successCount.get(), failCount.get());
 
@@ -448,6 +457,9 @@ class StockConcurrencyTest {
 
         latch.await(30, TimeUnit.SECONDS);
         executorService.shutdown();
+
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
 
         // Then: 재고 10개이므로 10명 성공
         log.info("재시도 테스트 결과 - 성공: {}, 실패: {}", successCount.get(), failCount.get());
@@ -554,6 +566,9 @@ class StockConcurrencyTest {
 
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
+
+        // 비동기 이벤트 처리 완료 대기
+        Thread.sleep(5000);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
