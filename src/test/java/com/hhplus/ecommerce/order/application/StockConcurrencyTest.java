@@ -218,8 +218,9 @@ class StockConcurrencyTest {
         boolean completed = latch.await(60, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 5개 (10-5=5), 주문 5건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(availableStock - totalUsers, totalUsers, 45);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -299,8 +300,9 @@ class StockConcurrencyTest {
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, availableStock, 45);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -409,8 +411,9 @@ class StockConcurrencyTest {
         latch.await(30, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, availableStock, 45);
 
         // Then: 정확히 10명만 성공
         log.info("50명 주문 결과 - 성공: {}, 실패: {}", successCount.get(), failCount.get());
@@ -458,8 +461,9 @@ class StockConcurrencyTest {
         latch.await(30, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, 10, 45);
 
         // Then: 재고 10개이므로 10명 성공
         log.info("재시도 테스트 결과 - 성공: {}, 실패: {}", successCount.get(), failCount.get());
@@ -567,8 +571,9 @@ class StockConcurrencyTest {
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, availableStock, 45);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -644,5 +649,82 @@ class StockConcurrencyTest {
         log.info("✅ 재시도 실패율: {:.2f}% (목표 5% 이하)", retryFailureRate);
         log.info("✅ 평균 응답 시간: {:.2f}ms (목표 1000ms 이하)",
                 executionTimes.isEmpty() ? 0 : executionTimes.stream().mapToLong(Long::longValue).average().orElse(0));
+    }
+
+    /**
+     * 비동기 이벤트 처리 완료를 폴링 방식으로 대기하는 헬퍼 메서드
+     *
+     * 안정화 조건: 주문 수와 재고 히스토리 수가 안정화되고 더 이상 변하지 않는지 확인
+     *
+     * @param expectedStock 예상 재고 수량 (사용하지 않음, 호환성 유지)
+     * @param expectedOrderCount 예상 주문 수 (사용하지 않음, 호환성 유지)
+     * @param timeoutSeconds 최대 대기 시간 (초)
+     * @throws InterruptedException 대기 중 인터럽트 발생 시
+     */
+    private void waitForAsyncEventsToComplete(int expectedStock, int expectedOrderCount, int timeoutSeconds) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        long timeout = timeoutSeconds * 1000L;
+
+        long previousOrderCount = -1;
+        long previousStockHistoryCount = -1;
+        long stableCheckStart = -1;
+        final long STABLE_DURATION_MS = 1000; // 1초간 안정 상태 유지 확인
+
+        log.info("=== 비동기 이벤트 완료 대기 시작 (안정화 방식) ===");
+        log.info("최대 대기: {}초, 안정화 기준: {}ms", timeoutSeconds, STABLE_DURATION_MS);
+
+        while ((System.currentTimeMillis() - startTime) < timeout) {
+            // 현재 상태 조회
+            long currentOrderCount = orderRepository.count();
+            long currentStockHistoryCount = stockHistoryRepository.count();
+            long currentBalanceHistoryCount = balanceHistoryRepository.count();
+
+            log.debug("폴링 체크 - 주문: {}, 재고히스토리: {}, 잔액히스토리: {}",
+                    currentOrderCount, currentStockHistoryCount, currentBalanceHistoryCount);
+
+            // 상태가 안정화되었는지 확인
+            // 조건: 주문 수 > 0 && 재고 히스토리 >= 주문 수 && 카운트가 이전과 동일
+            boolean isStable = (currentOrderCount > 0) &&
+                              (previousOrderCount != -1) &&  // 최소 2번째 체크부터
+                              (currentOrderCount == previousOrderCount) &&
+                              (currentStockHistoryCount == previousStockHistoryCount) &&
+                              (currentStockHistoryCount >= currentOrderCount);
+
+            if (isStable) {
+                if (stableCheckStart == -1) {
+                    stableCheckStart = System.currentTimeMillis();
+                    log.debug("안정화 상태 감지 시작 - 주문: {}, 재고히스토리: {}", currentOrderCount, currentStockHistoryCount);
+                }
+
+                // 안정 상태가 충분히 지속되었으면 완료
+                long stableDuration = System.currentTimeMillis() - stableCheckStart;
+                if (stableDuration >= STABLE_DURATION_MS) {
+                    log.info("✅ 비동기 이벤트 완료 확인 (소요: {}ms, 안정 지속: {}ms)",
+                            System.currentTimeMillis() - startTime, stableDuration);
+                    log.info("최종 상태 - 주문: {}, 재고히스토리: {}, 잔액히스토리: {}",
+                            currentOrderCount, currentStockHistoryCount, currentBalanceHistoryCount);
+                    return;
+                }
+            } else {
+                // 상태가 변경되면 안정화 타이머 리셋
+                if (stableCheckStart != -1) {
+                    log.debug("안정화 상태 리셋 - 주문: {} -> {}, 재고히스토리: {} -> {}",
+                            previousOrderCount, currentOrderCount, previousStockHistoryCount, currentStockHistoryCount);
+                }
+                stableCheckStart = -1;
+            }
+
+            previousOrderCount = currentOrderCount;
+            previousStockHistoryCount = currentStockHistoryCount;
+
+            // 500ms 대기 후 재시도
+            Thread.sleep(500);
+        }
+
+        log.warn("⚠️  비동기 이벤트 완료 타임아웃 ({}초 경과)", timeoutSeconds);
+        log.warn("최종 상태 - 주문: {}, 재고히스토리: {}, 재고: {}",
+                orderRepository.count(),
+                stockHistoryRepository.count(),
+                productRepository.findById(testProduct.getId()).map(Product::getStock).orElse(-1));
     }
 }
