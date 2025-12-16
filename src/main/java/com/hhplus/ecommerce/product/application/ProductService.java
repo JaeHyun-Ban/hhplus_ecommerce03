@@ -1,7 +1,5 @@
 package com.hhplus.ecommerce.product.application;
 
-import com.hhplus.ecommerce.common.constants.CacheConstants;
-import com.hhplus.ecommerce.common.constants.SchedulerConstants;
 import com.hhplus.ecommerce.product.domain.Product;
 import com.hhplus.ecommerce.product.domain.ProductStatistics;
 import com.hhplus.ecommerce.product.infrastructure.persistence.ProductRepository;
@@ -54,6 +52,14 @@ public class ProductService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedissonClient redissonClient;
 
+    // Cache Constants
+    private static final String CACHE_NAME_PRODUCT_INFO = "product-info";
+    private static final String CACHE_KEY_POPULAR_PRODUCTS_TOP5 = "cache:popular:products:top5";
+    private static final long CACHE_TTL_POPULAR_PRODUCTS_TOP5_MINUTES = 10L;
+
+    // Scheduler Constants
+    private static final String LOCK_KEY_POPULAR_PRODUCTS_REFRESH = "lock:popular:products:refresh";
+
     /**
      * 상품 목록 조회
      *
@@ -104,7 +110,7 @@ public class ProductService {
      * @param productId 상품 ID
      * @return 상품 상세 정보
      */
-    @Cacheable(value = CacheConstants.Names.PRODUCT_INFO, key = "#productId")
+    @Cacheable(value = CACHE_NAME_PRODUCT_INFO, key = "#productId")
     public Product getProduct(Long productId) {
         log.info("[UC-004] DB에서 상품 조회 - productId: {}", productId);
 
@@ -164,7 +170,7 @@ public class ProductService {
      */
     public List<Product> refreshPopularProductsCache() {
         // redisson의 분산락 객체를 가져온다.
-        RLock lock = redissonClient.getLock(SchedulerConstants.LockKeys.POPULAR_PRODUCTS_REFRESH);
+        RLock lock = redissonClient.getLock(LOCK_KEY_POPULAR_PRODUCTS_REFRESH);
 
         try {
             // 락 획득 시도: 5초 대기, 15초 후 자동 해제
@@ -190,9 +196,9 @@ public class ProductService {
 
             // 캐시 저장
             redisTemplate.opsForValue().set(
-                CacheConstants.Keys.POPULAR_PRODUCTS_TOP5,
+                CACHE_KEY_POPULAR_PRODUCTS_TOP5,
                 products,
-                Duration.ofMinutes(CacheConstants.TtlMinutes.POPULAR_PRODUCTS_TOP5)
+                Duration.ofMinutes(CACHE_TTL_POPULAR_PRODUCTS_TOP5_MINUTES)
             );
 
             log.info("[UC-006] 캐시 갱신 완료 - {} 개 상품 저장", products.size());
@@ -228,7 +234,7 @@ public class ProductService {
      */
     @SuppressWarnings("unchecked")
     private List<Product> getCachedPopularProducts() {
-        Object cached = redisTemplate.opsForValue().get(CacheConstants.Keys.POPULAR_PRODUCTS_TOP5);
+        Object cached = redisTemplate.opsForValue().get(CACHE_KEY_POPULAR_PRODUCTS_TOP5);
         return cached != null ? (List<Product>) cached : null;
     }
 

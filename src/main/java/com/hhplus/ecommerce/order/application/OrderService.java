@@ -2,15 +2,14 @@ package com.hhplus.ecommerce.order.application;
 
 import com.hhplus.ecommerce.cart.domain.Cart;
 import com.hhplus.ecommerce.cart.domain.CartItem;
-import com.hhplus.ecommerce.common.constants.LockConstants;
 import com.hhplus.ecommerce.coupon.domain.Coupon;
 import com.hhplus.ecommerce.coupon.domain.UserCoupon;
 import com.hhplus.ecommerce.order.domain.Order;
 import com.hhplus.ecommerce.order.domain.OrderItem;
 import com.hhplus.ecommerce.order.domain.OrderStatus;
-import com.hhplus.ecommerce.order.domain.Payment;
-import com.hhplus.ecommerce.order.domain.PaymentMethod;
-import com.hhplus.ecommerce.order.domain.PaymentStatus;
+import com.hhplus.ecommerce.payment.domain.Payment;
+import com.hhplus.ecommerce.payment.domain.PaymentMethod;
+import com.hhplus.ecommerce.payment.domain.PaymentStatus;
 import com.hhplus.ecommerce.order.domain.event.OrderCompletedEvent;
 import com.hhplus.ecommerce.order.domain.event.OrderCreatedEvent;
 import com.hhplus.ecommerce.product.domain.Product;
@@ -70,6 +69,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
+
+    // Lock Constants
+    private static final String USER_BALANCE_LOCK_PREFIX = "lock:balance:user:";
 
     // Repositories
     private final OrderRepository orderRepository;
@@ -160,7 +162,7 @@ public class OrderService {
         // Redisson 분산락 획득 (userId 기반)
         // 중요: 잔액 수정을 포함하므로 BalanceService와 동일한 락 키 사용
         // 주문 생성 시 balance 차감이 발생하므로 같은 user의 balance 충전과 동기화 필요
-        String lockKey = LockConstants.Balance.USER_LOCK_PREFIX + userId; // key생성
+        String lockKey = USER_BALANCE_LOCK_PREFIX + userId; // key생성
         // key로 락 객체를 가져옴
         //>분산락을 조작하기 위한 proxy객체를 리턴한다.
         RLock lock = redissonClient.getLock(lockKey);

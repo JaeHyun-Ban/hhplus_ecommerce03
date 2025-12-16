@@ -4,7 +4,7 @@ import com.hhplus.ecommerce.common.application.DomainEventStoreService;
 import com.hhplus.ecommerce.common.domain.DomainEventStore;
 import com.hhplus.ecommerce.common.domain.event.BalanceDeductionPayload;
 import com.hhplus.ecommerce.order.domain.Order;
-import com.hhplus.ecommerce.order.domain.Payment;
+import com.hhplus.ecommerce.payment.domain.Payment;
 import com.hhplus.ecommerce.order.domain.event.OrderCompletedEvent;
 import com.hhplus.ecommerce.order.infrastructure.persistence.OrderRepository;
 import com.hhplus.ecommerce.product.application.BalanceDeductionEvent;

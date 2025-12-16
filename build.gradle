@@ -31,6 +31,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
 
+    // Kafka
+    implementation 'org.springframework.kafka:spring-kafka'
+
     // Redisson (Redis 분산락)
     implementation 'org.redisson:redisson-spring-boot-starter:3.24.3'
 
@@ -50,6 +53,7 @@ dependencies {
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     implementation 'org.springframework.retry:spring-retry'

@@ -1,6 +1,5 @@
 package com.hhplus.ecommerce.product.application;
 
-import com.hhplus.ecommerce.common.constants.SchedulerConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -46,6 +45,12 @@ public class ProductStatisticsScheduler {
     private final ProductStatisticsService productStatisticsService;
     private final RedissonClient redissonClient;
 
+    // Scheduler Constants
+    private static final String LOCK_KEY_PRODUCT_STATISTICS_DAILY = "lock:batch:product-statistics:daily";
+    private static final String CRON_DAILY_1AM = "0 0 1 * * *";
+    private static final long WAIT_TIME_SECONDS = 0L;
+    private static final long LEASE_TIME_SECONDS = 300L;
+
     /**
      * 일일 상품 통계 집계 배치 작업
      *
@@ -71,15 +76,15 @@ public class ProductStatisticsScheduler {
      * - 집계된 상품 수 로그 출력
      * - 실행 시간 측정
      */
-    @Scheduled(cron = SchedulerConstants.Cron.DAILY_1AM)
+    @Scheduled(cron = CRON_DAILY_1AM)
     public void aggregateDailyStatistics() {
-        RLock lock = redissonClient.getLock(SchedulerConstants.LockKeys.PRODUCT_STATISTICS_DAILY);
+        RLock lock = redissonClient.getLock(LOCK_KEY_PRODUCT_STATISTICS_DAILY);
 
         try {
             // 락 획득 시도: 0초 대기 (즉시 실패), 5분 후 자동 해제
             boolean isLocked = lock.tryLock(
-                SchedulerConstants.Timeout.WAIT_TIME_SECONDS,
-                SchedulerConstants.Timeout.LEASE_TIME_SECONDS,
+                WAIT_TIME_SECONDS,
+                LEASE_TIME_SECONDS,
                 TimeUnit.SECONDS
             );
 

@@ -1,6 +1,5 @@
 package com.hhplus.ecommerce.common.application;
 
-import com.hhplus.ecommerce.common.constants.SchedulerConstants;
 import com.hhplus.ecommerce.common.domain.DomainEventStore;
 import com.hhplus.ecommerce.common.domain.event.CouponUsagePayload;
 import com.hhplus.ecommerce.common.domain.event.EventPayload;
@@ -85,6 +84,10 @@ public class DomainEventRetryService {
 
     private static final int BATCH_SIZE = 100;
 
+    // Scheduler Constants
+    private static final String LOCK_KEY_COUPON_EVENT_RETRY = "lock:coupon:event:retry";
+    private static final String CRON_EVERY_MINUTE = "0 * * * * *";
+
     /**
      * 실패한 이벤트 재시도 (스케줄러)
      *
@@ -97,9 +100,9 @@ public class DomainEventRetryService {
      * 3. 각 이벤트 재시도 (이벤트 타입별 처리)
      * 4. 성공 시 완료 처리, 실패 시 재시도 횟수 증가
      */
-    @Scheduled(cron = SchedulerConstants.Cron.EVERY_MINUTE)
+    @Scheduled(cron = CRON_EVERY_MINUTE)
     public void retryFailedEvents() {
-        RLock lock = redissonClient.getLock(SchedulerConstants.LockKeys.COUPON_EVENT_RETRY);
+        RLock lock = redissonClient.getLock(LOCK_KEY_COUPON_EVENT_RETRY);
 
         try {
             // 분산 락 획득 시도 (대기 없음, 1분 유지)

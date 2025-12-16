@@ -1,6 +1,5 @@
 package com.hhplus.ecommerce.coupon.infrastructure.persistence;
 
-import com.hhplus.ecommerce.common.constants.RedisConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -58,6 +57,11 @@ public class CouponRedisRepository {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final StringRedisTemplate stringRedisTemplate;
+
+    // Redis Constants
+    private static final String COUPON_ISSUED_PREFIX = "coupon:issued:";
+    private static final String COUPON_USER_COUNT_PREFIX = "coupon:user:count:";
+    private static final long COUPON_DATA_TTL_DAYS = 7L;
 
     /**
      * Lua Script: 선착순 쿠폰 발급
@@ -155,8 +159,8 @@ public class CouponRedisRepository {
      * @return IssueResult (성공 여부, 메시지, 발급 수량, 순위)
      */
     public IssueResult issue(Long couponId, Long userId, Integer totalQuantity, Integer maxIssuePerUser) {
-        String issuedKey = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
-        String userCountKey = RedisConstants.Coupon.USER_COUNT_PREFIX + couponId;
+        String issuedKey = COUPON_ISSUED_PREFIX + couponId;
+        String userCountKey = COUPON_USER_COUNT_PREFIX + couponId;
 
         try {
             // 현재 시각 타임스탬프 (밀리초)
@@ -200,7 +204,7 @@ public class CouponRedisRepository {
 
             // 결과 파싱 (StringRedisTemplate 사용으로 String 직접 반환)
             int success = parseToInt(result.get(0));
-            String message = result.get(1).toString();
+            String message = parseToString(result.get(1));
             Long count = parseToLong(result.get(2));
             Long rank = result.size() > 3 ? parseToLong(result.get(3)) : null;
 
@@ -235,7 +239,7 @@ public class CouponRedisRepository {
      * @return 발급 수량 (Sorted Set 크기)
      */
     public Long getIssuedCount(Long couponId) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
         Long count = redisTemplate.opsForZSet().size(key);
         return count != null ? count : 0L;
     }
@@ -248,7 +252,7 @@ public class CouponRedisRepository {
      * @return 발급 수량 (없으면 0)
      */
     public Long getUserIssuedCount(Long couponId, Long userId) {
-        String key = RedisConstants.Coupon.USER_COUNT_PREFIX + couponId;
+        String key = COUPON_USER_COUNT_PREFIX + couponId;
         Object value = redisTemplate.opsForHash().get(key, userId.toString());
 
         if (value == null) {
@@ -272,7 +276,7 @@ public class CouponRedisRepository {
      * @return 발급 여부 (Sorted Set 멤버 존재 여부)
      */
     public boolean hasIssued(Long couponId, Long userId) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
         Double score = redisTemplate.opsForZSet().score(key, userId.toString());
         return score != null;
     }
@@ -285,7 +289,7 @@ public class CouponRedisRepository {
      * @return 발급 순위 (1부터 시작, 발급받지 않았으면 null)
      */
     public Long getUserRank(Long couponId, Long userId) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
         Long rank = redisTemplate.opsForZSet().rank(key, userId.toString());
         return rank != null ? rank + 1 : null;
     }
@@ -298,7 +302,7 @@ public class CouponRedisRepository {
      * @return 발급 시각 타임스탬프 (밀리초, 발급받지 않았으면 null)
      */
     public Long getUserIssueTimestamp(Long couponId, Long userId) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
         Double score = redisTemplate.opsForZSet().score(key, userId.toString());
         return score != null ? score.longValue() : null;
     }
@@ -311,7 +315,7 @@ public class CouponRedisRepository {
      * @return 발급 내역 리스트 (순위순)
      */
     public List<IssueRecord> getTopIssuedUsers(Long couponId, int topN) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
 
         // Sorted Set에서 스코어와 함께 조회
         Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<Object>> tuples =
@@ -345,7 +349,7 @@ public class CouponRedisRepository {
      * @return 발급 내역 리스트 (순위순)
      */
     public List<IssueRecord> getAllIssuedUsers(Long couponId) {
-        String key = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
+        String key = COUPON_ISSUED_PREFIX + couponId;
 
         Set<org.springframework.data.redis.core.ZSetOperations.TypedTuple<Object>> tuples =
             redisTemplate.opsForZSet().rangeWithScores(key, 0, -1);
@@ -380,8 +384,8 @@ public class CouponRedisRepository {
      * @param couponId 쿠폰 ID
      */
     public void initializeCoupon(Long couponId) {
-        String issuedKey = RedisConstants.Coupon.ISSUED_PREFIX + couponId;
-        String userCountKey = RedisConstants.Coupon.USER_COUNT_PREFIX + couponId;
+        String issuedKey = COUPON_ISSUED_PREFIX + couponId;
+        String userCountKey = COUPON_USER_COUNT_PREFIX + couponId;
 
         redisTemplate.delete(issuedKey);
         redisTemplate.delete(userCountKey);
@@ -397,7 +401,7 @@ public class CouponRedisRepository {
     private void setTTLIfNotExists(String key) {
         Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
         if (ttl != null && ttl == -1) { // TTL이 설정되지 않은 경우
-            redisTemplate.expire(key, RedisConstants.TtlDays.COUPON_DATA, TimeUnit.DAYS);
+            redisTemplate.expire(key, COUPON_DATA_TTL_DAYS, TimeUnit.DAYS);
         }
     }
 
@@ -414,7 +418,7 @@ public class CouponRedisRepository {
         Long uniqueUsers = issuedCount;
 
         // 사용자별 발급 수량 총합
-        String userCountKey = RedisConstants.Coupon.USER_COUNT_PREFIX + couponId;
+        String userCountKey = COUPON_USER_COUNT_PREFIX + couponId;
         Map<Object, Object> userCounts = redisTemplate.opsForHash().entries(userCountKey);
         Long totalIssueCount = userCounts.values().stream()
             .mapToLong(v -> ((Number) v).longValue())
@@ -468,6 +472,27 @@ public class CouponRedisRepository {
             log.warn("Long 파싱 실패, 0L 반환 - value: {}", value);
             return 0L;
         }
+    }
+
+    /**
+     * Redis 결과를 String으로 파싱
+     *
+     * Redis에서 byte array로 반환된 값을 String으로 변환합니다.
+     *
+     * @param value Redis 반환 값
+     * @return String 값
+     */
+    private String parseToString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof byte[]) {
+            return new String((byte[]) value);
+        }
+        if (value instanceof String) {
+            return (String) value;
+        }
+        return value.toString();
     }
 
     // ========== Inner Classes ==========

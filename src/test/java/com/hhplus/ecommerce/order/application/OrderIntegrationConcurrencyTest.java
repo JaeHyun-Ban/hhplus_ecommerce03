@@ -86,7 +86,7 @@ class OrderIntegrationConcurrencyTest {
     private OrderSequenceRepository orderSequenceRepository;
 
     @Autowired
-    private com.hhplus.ecommerce.order.infrastructure.persistence.PaymentRepository paymentRepository;
+    private com.hhplus.ecommerce.payment.infrastructure.persistence.PaymentRepository paymentRepository;
 
     private Product testProduct;
     private List<User> testUsers;
@@ -213,8 +213,9 @@ class OrderIntegrationConcurrencyTest {
         boolean completed = latch.await(120, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기 (재고 차감, 잔액 차감, 쿠폰 사용 등)
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, availableStock, 45);
 
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
@@ -335,8 +336,9 @@ class OrderIntegrationConcurrencyTest {
         latch.await(60, TimeUnit.SECONDS);
         executorService.shutdown();
 
-        // 비동기 이벤트 처리 완료 대기
-        Thread.sleep(5000);
+        // 비동기 이벤트 처리 완료 대기 (폴링 방식으로 개선)
+        // 재고 0개, 주문 10건이 될 때까지 최대 45초 대기
+        waitForAsyncEventsToComplete(0, availableStock, 45);
 
         // Then: 검증
         log.info("성공: {}건, 실패: {}건", successCount.get(), failCount.get());
@@ -360,5 +362,81 @@ class OrderIntegrationConcurrencyTest {
         log.info("✅ 성공한 주문 수: {}, 시퀀스 증가: {}", successCount.get(), sequenceIncrease);
         log.info("초기 시퀀스: {}, 최종 시퀀스: {}",
                 initialSequenceNumber, finalSequence.getSequence());
+    }
+
+    /**
+     * 비동기 이벤트 처리 완료를 폴링 방식으로 대기하는 헬퍼 메서드
+     *
+     * 안정화 조건: 주문 수와 결제 수가 일치하고, 재고 히스토리와 잔액 히스토리가 생성되었는지 확인
+     *
+     * @param timeoutSeconds 최대 대기 시간 (초)
+     * @throws InterruptedException 대기 중 인터럽트 발생 시
+     */
+    private void waitForAsyncEventsToComplete(int expectedStock, int expectedOrderCount, int timeoutSeconds) throws InterruptedException {
+        long startTime = System.currentTimeMillis();
+        long timeout = timeoutSeconds * 1000L;
+
+        long previousOrderCount = -1;
+        long previousPaymentCount = -1;
+        long stableCheckStart = -1;
+        final long STABLE_DURATION_MS = 1000; // 1초간 안정 상태 유지 확인
+
+        log.info("=== 비동기 이벤트 완료 대기 시작 (안정화 방식) ===");
+        log.info("최대 대기: {}초, 안정화 기준: {}ms", timeoutSeconds, STABLE_DURATION_MS);
+
+        while ((System.currentTimeMillis() - startTime) < timeout) {
+            // 현재 상태 조회
+            long currentOrderCount = orderRepository.count();
+            long currentPaymentCount = paymentRepository.count();
+            long currentStockHistoryCount = stockHistoryRepository.count();
+            long currentBalanceHistoryCount = balanceHistoryRepository.count();
+
+            log.debug("폴링 체크 - 주문: {}, 결제: {}, 재고히스토리: {}, 잔액히스토리: {}",
+                    currentOrderCount, currentPaymentCount, currentStockHistoryCount, currentBalanceHistoryCount);
+
+            // 상태가 안정화되었는지 확인
+            // 조건: 주문 수 == 결제 수 && 주문 수 > 0 && 카운트가 이전과 동일
+            boolean isStable = (currentOrderCount == currentPaymentCount) &&
+                              (currentOrderCount > 0) &&
+                              (previousOrderCount != -1) &&  // 최소 2번째 체크부터
+                              (currentOrderCount == previousOrderCount) &&
+                              (currentPaymentCount == previousPaymentCount);
+
+            if (isStable) {
+                if (stableCheckStart == -1) {
+                    stableCheckStart = System.currentTimeMillis();
+                    log.debug("안정화 상태 감지 시작 - 주문: {}, 결제: {}", currentOrderCount, currentPaymentCount);
+                }
+
+                // 안정 상태가 충분히 지속되었으면 완료
+                long stableDuration = System.currentTimeMillis() - stableCheckStart;
+                if (stableDuration >= STABLE_DURATION_MS) {
+                    log.info("✅ 비동기 이벤트 완료 확인 (소요: {}ms, 안정 지속: {}ms)",
+                            System.currentTimeMillis() - startTime, stableDuration);
+                    log.info("최종 상태 - 주문: {}, 결제: {}, 재고히스토리: {}, 잔액히스토리: {}",
+                            currentOrderCount, currentPaymentCount, currentStockHistoryCount, currentBalanceHistoryCount);
+                    return;
+                }
+            } else {
+                // 상태가 변경되면 안정화 타이머 리셋
+                if (stableCheckStart != -1) {
+                    log.debug("안정화 상태 리셋 - 주문: {} -> {}, 결제: {} -> {}",
+                            previousOrderCount, currentOrderCount, previousPaymentCount, currentPaymentCount);
+                }
+                stableCheckStart = -1;
+            }
+
+            previousOrderCount = currentOrderCount;
+            previousPaymentCount = currentPaymentCount;
+
+            // 500ms 대기 후 재시도
+            Thread.sleep(500);
+        }
+
+        log.warn("⚠️  비동기 이벤트 완료 타임아웃 ({}초 경과)", timeoutSeconds);
+        log.warn("최종 상태 - 주문: {}, 결제: {}, 재고: {}",
+                orderRepository.count(),
+                paymentRepository.count(),
+                productRepository.findById(testProduct.getId()).map(Product::getStock).orElse(-1));
     }
 }

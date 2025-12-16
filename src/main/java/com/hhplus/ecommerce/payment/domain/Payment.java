@@ -1,5 +1,6 @@
-package com.hhplus.ecommerce.order.domain;
+package com.hhplus.ecommerce.payment.domain;
 
+import com.hhplus.ecommerce.order.domain.Order;
 import jakarta.persistence.*;
 import lombok.*;
 

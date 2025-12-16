@@ -1,6 +1,5 @@
 package com.hhplus.ecommerce.user.application;
 
-import com.hhplus.ecommerce.common.constants.LockConstants;
 import com.hhplus.ecommerce.user.domain.BalanceHistory;
 import com.hhplus.ecommerce.user.domain.BalanceTransactionType;
 import com.hhplus.ecommerce.user.domain.User;
@@ -47,6 +46,11 @@ public class BalanceService {
     private final RedissonClient redissonClient;
     private final org.springframework.context.ApplicationContext applicationContext;
 
+    // Lock Constants
+    private static final String USER_LOCK_PREFIX = "lock:balance:user:";
+    private static final long WAIT_TIME_SECONDS = 10L;
+    private static final long LEASE_TIME_SECONDS = 10L;
+
     /**
      * 잔액 충전
      *
@@ -82,14 +86,14 @@ public class BalanceService {
         validateChargeAmount(amount);
 
         // Step 2: 분산 락 획득
-        String lockKey = LockConstants.Balance.USER_LOCK_PREFIX + userId;
+        String lockKey = USER_LOCK_PREFIX + userId;
         RLock lock = redissonClient.getLock(lockKey);
 
         try {
             // 락 획득 시도: 10초 대기, 10초 후 자동 해제
             boolean isLocked = lock.tryLock(
-                LockConstants.Timeout.WAIT_TIME_SECONDS,
-                LockConstants.Timeout.LEASE_TIME_SECONDS,
+                WAIT_TIME_SECONDS,
+                LEASE_TIME_SECONDS,
                 TimeUnit.SECONDS
             );
 

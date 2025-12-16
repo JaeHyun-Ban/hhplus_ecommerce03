@@ -70,7 +70,7 @@ class ProductStatisticsServiceTest {
     private OrderRepository orderRepository;
 
     @Autowired
-    private com.hhplus.ecommerce.order.infrastructure.persistence.PaymentRepository paymentRepository;
+    private com.hhplus.ecommerce.payment.infrastructure.persistence.PaymentRepository paymentRepository;
 
     @Autowired
     private ProductRepository productRepository;

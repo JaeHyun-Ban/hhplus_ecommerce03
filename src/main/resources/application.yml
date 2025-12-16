@@ -25,6 +25,23 @@ spring:
           min-idle: 2
           max-wait: -1ms
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: ecommerce-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.hhplus.ecommerce
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+    listener:
+      ack-mode: manual
+
 # Repository 타입 설정 (기본값: jpa)
 # - jpa: Spring Data JPA 사용 (MySQL)
 # - inmemory: HashMap 기반 인메모리 Repository 사용
