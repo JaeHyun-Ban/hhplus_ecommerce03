@@ -2,6 +2,7 @@ package com.hhplus.ecommerce.order.domain;
 
 import com.hhplus.ecommerce.coupon.domain.OrderCoupon;
 import com.hhplus.ecommerce.coupon.domain.UserCoupon;
+import com.hhplus.ecommerce.payment.domain.Payment;
 import com.hhplus.ecommerce.product.domain.Product;
 import com.hhplus.ecommerce.user.domain.User;
 import jakarta.persistence.*;
