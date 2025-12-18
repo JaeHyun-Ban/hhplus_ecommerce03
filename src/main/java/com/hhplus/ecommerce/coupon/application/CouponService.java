@@ -12,6 +12,7 @@ import com.hhplus.ecommerce.user.infrastructure.persistence.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,21 +20,23 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 쿠폰 애플리케이션 서비스 (비동기 이벤트 기반)
+ * 쿠폰 애플리케이션 서비스 (Kafka 기반 비동기)
  *
  * Application Layer - Use Case 실행 계층
  *
  * 책임:
- * - UC-017: 선착순 쿠폰 발급 (Redis 기반 + 비동기 DB 동기화)
+ * - UC-017: 선착순 쿠폰 발급 (Redis 기반 + Kafka 비동기 DB 동기화)
  * - UC-018: 발급 가능한 쿠폰 목록 조회
  * - UC-019: 내 쿠폰 목록 조회
  * - 트랜잭션 관리
- * - 도메인 이벤트 발행
+ * - Kafka 이벤트 발행
  *
- * 비동기 아키텍처:
+ * Kafka 비동기 아키텍처:
  * - Redis 발급 성공 → 즉시 응답 (사용자 대기 시간 최소화)
- * - CouponIssuedEvent 발행 → 비동기 DB 저장 (CouponEventHandler)
+ * - Kafka Topic(coupon-events)으로 CouponIssuedEvent 발행
+ * - Kafka Consumer가 메시지 수신 → 비동기 DB 저장
  * - DB Deadlock이 사용자 경험에 영향 없음
+ * - Kafka의 재시도 및 DLQ로 안정성 보장
  *
  * 레이어 의존성:
  * - Infrastructure Layer: CouponRepository, UserCouponRepository, UserRepository
@@ -51,8 +54,10 @@ public class CouponService {
     private final CouponRedisRepository couponRedisRepository;
     private final ApplicationEventPublisher eventPublisher;
 
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
     /**
-     * 선착순 쿠폰 발급 (Redis 기반 + 비동기 DB 동기화)
+     * 선착순 쿠폰 발급 (Redis 기반 + Kafka 비동기 DB 동기화)
      *
      * Use Case: UC-017
      *
@@ -64,24 +69,27 @@ public class CouponService {
      *    - 사용자별 발급 제한 검증
      *    - 총 수량 제한 검증
      * 4. Redis 성공 시 즉시 응답 (DB 저장 대기 없음)
-     * 5. CouponIssuedEvent 발행 → 비동기 DB 저장
+     * 5. Kafka로 CouponIssuedEvent 발행 → Consumer가 비동기 DB 저장
      *
-     * 비동기 아키텍처 장점:
+     * Kafka 비동기 아키텍처 장점:
      * - **즉시 응답**: Redis 성공 = 사용자 성공 (응답 시간 최소화)
      * - **DB 병목 제거**: DB Deadlock이 사용자 경험에 영향 없음
      * - **최종 일관성**: Redis(Source of Truth) → DB는 나중에 동기화
-     * - **자동 재시도**: CouponEventHandler에서 실패 시 재시도
+     * - **자동 재시도**: Kafka Consumer에서 실패 시 재시도
+     * - **확장성**: Consumer 인스턴스 수평 확장 가능
+     * - **모니터링**: Kafka Lag으로 처리 상태 추적
      *
      * 동시성 제어:
      * - Redis: Sorted Set + Lua Script (선착순 정확히 100명 선택)
-     * - DB: 비동기 저장 + @Retryable (최종 일관성)
+     * - Kafka: 파티션별 순서 보장 (couponId 기반 파티셔닝)
+     * - DB: Consumer에서 비동기 저장 + 재시도 (최종 일관성)
      *
      * 동시성 시나리오 (선착순 100개 쿠폰, 120명 동시 요청):
      * - 120개 요청이 Redis에 동시 발급 시도
      * - Redis: 정확히 100명 선택 → 즉시 성공 응답
      * - 나머지 20명: 즉시 실패 응답 (빠른 실패)
-     * - 비동기: 100개 이벤트 발행 → Thread Pool에서 DB 저장
-     * - DB Deadlock 발생해도 재시도 (사용자는 이미 성공 응답 받음)
+     * - 비동기: 100개 이벤트 Kafka 발행 → Consumer가 DB 저장
+     * - DB Deadlock 발생해도 Consumer 재시도 (사용자는 이미 성공 응답 받음)
      *
      * Extensions (예외 시나리오):
      * 2a. 발급 기간이 아닌 경우
@@ -141,20 +149,22 @@ public class CouponService {
             }
         }
 
-        // Step 4: Redis 성공 → 이벤트 발행 (비동기 DB 저장)
+        // Step 4: Redis 성공 → Kafka 이벤트 발행 (비동기 DB 저장)
         CouponIssuedEvent event = CouponIssuedEvent.of(
             couponId,
             userId,
             issueResult.getRank(),
             issueResult.getIssuedCount()
         );
-        eventPublisher.publishEvent(event);
 
-        log.info("[UC-017] 쿠폰 발급 성공 (Redis) - userId: {}, couponId: {}, rank: {}, issued: {}/{}, 비동기 DB 저장 예정",
+        // Kafka로 이벤트 발행 (couponId를 파티션 키로 사용 → 동일 쿠폰은 동일 파티션에서 순서 보장)
+        kafkaTemplate.send("coupon-events", couponId.toString(), event);
+
+        log.info("[UC-017] 쿠폰 발급 성공 (Redis) - userId: {}, couponId: {}, rank: {}, issued: {}/{}, Kafka 발행 완료",
                  userId, couponId, issueResult.getRank(), issueResult.getIssuedCount(), coupon.getTotalQuantity());
 
         // Step 5: 즉시 응답 반환 (임시 UserCoupon 객체)
-        // 실제 DB 저장은 CouponEventHandler에서 비동기로 처리
+        // 실제 DB 저장은 Kafka Consumer에서 비동기로 처리
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다. ID: " + userId));
 
