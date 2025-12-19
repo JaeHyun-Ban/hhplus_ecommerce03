@@ -50,13 +50,7 @@ public class ProductRedisRepository {
     private static final long PRODUCT_INFO_REDIS_TTL_HOURS = 24L;
 
     /**
-     * 인기상품 스코어 증가 (주문 시 호출)
-     *
-     * 주문된 상품의 판매 수량을 인기도 스코어에 반영
-     * ZINCRBY 명령어를 사용하여 원자적으로 스코어 증가
-     *
-     * @param productId 상품 ID
-     * @param quantity 주문 수량
+     * 인기상품 스코어 증가 (ZINCRBY 원자적 연산)
      */
     public void incrementPopularityScore(Long productId, Integer quantity) {
         try {
@@ -73,13 +67,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 상품 정보 캐시 저장
-     *
-     * Hash 자료구조에 상품 정보를 저장하여 DB 조회 최소화
-     *
-     * @param product 상품 엔티티
-     */
     public void cacheProductInfo(Product product) {
         String key = PRODUCT_INFO_REDIS_PREFIX + product.getId();
 
@@ -106,12 +93,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 상품 정보 캐시 조회
-     *
-     * @param productId 상품 ID
-     * @return 상품 정보 Map (캐시 없으면 null)
-     */
     public Map<String, String> getCachedProductInfo(Long productId) {
         String key = PRODUCT_INFO_REDIS_PREFIX + productId;
 
@@ -134,14 +115,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 인기상품 TOP N 조회 (ID만)
-     *
-     * Sorted Set에서 스코어가 높은 순으로 상위 N개 상품 ID 조회
-     *
-     * @param topN 조회할 상위 개수
-     * @return 상품 ID 리스트 (인기도 순)
-     */
     public List<Long> getTopPopularProductIds(int topN) {
         try {
             // Sorted Set에서 높은 스코어 순으로 조회 (ZREVRANGE)
@@ -163,12 +136,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 인기상품 TOP N 조회 (스코어 포함)
-     *
-     * @param topN 조회할 상위 개수
-     * @return 상품 ID와 스코어 맵
-     */
     public List<PopularProduct> getTopPopularProducts(int topN) {
         try {
             // Sorted Set에서 높은 스코어 순으로 조회 (WITH SCORES)
@@ -194,12 +161,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 특정 상품의 인기도 순위 조회
-     *
-     * @param productId 상품 ID
-     * @return 순위 (1부터 시작, 없으면 null)
-     */
     public Long getProductRank(Long productId) {
         try {
             // Sorted Set에서 순위 조회 (ZREVRANK - 높은 스코어부터 순위 매김)
@@ -215,12 +176,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 특정 상품의 인기도 스코어 조회
-     *
-     * @param productId 상품 ID
-     * @return 스코어 (판매 수량 누적값, 없으면 0)
-     */
     public Long getProductScore(Long productId) {
         try {
             Double score = redisTemplate.opsForZSet()
@@ -234,13 +189,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 인기상품 데이터 초기화
-     *
-     * Use Case:
-     * - 테스트 환경에서 데이터 초기화
-     * - 주기적인 순위 리셋 (예: 월별 초기화)
-     */
     public void resetPopularProducts() {
         try {
             redisTemplate.delete(PRODUCT_POPULAR_RANKING);
@@ -251,15 +199,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 상품 정보 캐시 삭제
-     *
-     * Use Case:
-     * - 상품 정보 변경 시
-     * - 상품 삭제 시
-     *
-     * @param productId 상품 ID
-     */
     public void evictProductCache(Long productId) {
         String key = PRODUCT_INFO_REDIS_PREFIX + productId;
 
@@ -272,11 +211,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 인기상품 통계 조회
-     *
-     * @return 통계 정보
-     */
     public PopularProductStats getStats() {
         try {
             Long totalProducts = redisTemplate.opsForZSet().size(PRODUCT_POPULAR_RANKING);
@@ -306,9 +240,6 @@ public class ProductRedisRepository {
         }
     }
 
-    /**
-     * 인기상품 DTO (상품 ID + 판매 수량)
-     */
     @lombok.Getter
     @lombok.AllArgsConstructor
     public static class PopularProduct {
@@ -316,13 +247,10 @@ public class ProductRedisRepository {
         private Long salesCount;
     }
 
-    /**
-     * 인기상품 통계 DTO
-     */
     @lombok.Builder
     @lombok.Getter
     public static class PopularProductStats {
-        private Long totalProducts;  // 인기상품 수
-        private Long totalSales;      // 전체 판매 수량
+        private Long totalProducts;
+        private Long totalSales;
     }
 }
