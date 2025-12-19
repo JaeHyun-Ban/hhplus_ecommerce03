@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.order.application;
 
+import com.hhplus.ecommerce.config.KafkaConfig;
 import com.hhplus.ecommerce.coupon.domain.UserCoupon;
 import com.hhplus.ecommerce.coupon.infrastructure.persistence.UserCouponRepository;
 import com.hhplus.ecommerce.order.domain.Order;
@@ -41,8 +42,8 @@ public class OrderCompletedKafkaConsumer {
     private final ProductRepository productRepository;
 
     @KafkaListener(
-        topics = "payment-events",
-        groupId = "order-completed-consumer-group",
+        topics = KafkaConfig.TOPIC_PAYMENT_EVENTS,
+        groupId = KafkaConfig.GROUP_ORDER_COMPLETED_CONSUMER,
         containerFactory = "kafkaListenerContainerFactory"
     )
     @Transactional(propagation = Propagation.REQUIRES_NEW)

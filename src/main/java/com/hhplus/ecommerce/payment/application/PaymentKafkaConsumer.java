@@ -3,6 +3,7 @@ package com.hhplus.ecommerce.payment.application;
 import com.hhplus.ecommerce.common.application.DomainEventStoreService;
 import com.hhplus.ecommerce.common.domain.DomainEventStore;
 import com.hhplus.ecommerce.common.domain.event.BalanceDeductionPayload;
+import com.hhplus.ecommerce.config.KafkaConfig;
 import com.hhplus.ecommerce.order.domain.Order;
 import com.hhplus.ecommerce.payment.domain.Payment;
 import com.hhplus.ecommerce.order.domain.event.OrderCompletedEvent;
@@ -63,8 +64,8 @@ public class PaymentKafkaConsumer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @KafkaListener(
-        topics = "stock-events",
-        groupId = "payment-consumer-group",
+        topics = KafkaConfig.TOPIC_STOCK_EVENTS,
+        groupId = KafkaConfig.GROUP_PAYMENT_CONSUMER,
         containerFactory = "kafkaListenerContainerFactory"
     )
     @Retryable(
@@ -125,7 +126,7 @@ public class PaymentKafkaConsumer {
                     .toList())
                 .build();
 
-            kafkaTemplate.send("payment-events", event.getOrderId().toString(), completedEvent);
+            kafkaTemplate.send(KafkaConfig.TOPIC_PAYMENT_EVENTS, event.getOrderId().toString(), completedEvent);
             log.info("[Kafka] payment-events 발행 - orderId: {}", event.getOrderId());
 
             ack.acknowledge();

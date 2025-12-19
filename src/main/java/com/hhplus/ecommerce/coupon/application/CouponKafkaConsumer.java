@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.coupon.application;
 
+import com.hhplus.ecommerce.config.KafkaConfig;
 import com.hhplus.ecommerce.coupon.domain.Coupon;
 import com.hhplus.ecommerce.coupon.domain.UserCoupon;
 import com.hhplus.ecommerce.coupon.domain.UserCouponStatus;
@@ -85,8 +86,8 @@ public class CouponKafkaConsumer {
      * @param ack 수동 커밋 객체
      */
     @KafkaListener(
-        topics = "coupon-events",
-        groupId = "coupon-consumer-group",
+        topics = KafkaConfig.TOPIC_COUPON_EVENTS,
+        groupId = KafkaConfig.GROUP_COUPON_CONSUMER,
         containerFactory = "kafkaListenerContainerFactory"
     )
     @Retryable(
