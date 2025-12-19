@@ -139,8 +139,12 @@ public class CouponService {
             } else if ("EXCEED_USER_LIMIT".equals(failReason)) {
                 Long userCount = couponRedisRepository.getUserIssuedCount(couponId, userId);
                 throw new IllegalStateException(
-                    String.format("이미 최대 발급 수량을 받았습니다. (발급 횟수: %d/%d)",
-                                  userCount, coupon.getMaxIssuePerUser())
+                    new StringBuilder("이미 최대 발급 수량을 받았습니다. (발급 횟수: ")
+                        .append(userCount)
+                        .append("/")
+                        .append(coupon.getMaxIssuePerUser())
+                        .append(")")
+                        .toString()
                 );
             } else if ("ALREADY_ISSUED".equals(failReason)) {
                 throw new IllegalStateException("이미 발급받은 쿠폰입니다");

@@ -422,8 +422,14 @@ public class OrderService {
             // 재고 확인
             if (product.getStock() < cartItem.getQuantity()) {
                 throw new IllegalStateException(
-                    String.format("상품 '%s'의 재고가 부족합니다. 요청: %d개, 가능: %d개",
-                        product.getName(), cartItem.getQuantity(), product.getStock())
+                    new StringBuilder("상품 '")
+                        .append(product.getName())
+                        .append("'의 재고가 부족합니다. 요청: ")
+                        .append(cartItem.getQuantity())
+                        .append("개, 가능: ")
+                        .append(product.getStock())
+                        .append("개")
+                        .toString()
                 );
             }
 
@@ -475,8 +481,10 @@ public class OrderService {
             if (coupon.getMinimumOrderAmount() != null
                     && totalAmount.compareTo(coupon.getMinimumOrderAmount()) < 0) {
                 throw new IllegalArgumentException(
-                    String.format("최소 주문 금액(%s원)을 만족하지 않습니다",
-                        coupon.getMinimumOrderAmount())
+                    new StringBuilder("최소 주문 금액(")
+                        .append(coupon.getMinimumOrderAmount())
+                        .append("원)을 만족하지 않습니다")
+                        .toString()
                 );
             }
 

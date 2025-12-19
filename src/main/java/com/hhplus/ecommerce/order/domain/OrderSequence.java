@@ -79,8 +79,12 @@ public class OrderSequence {
      * @return 주문 번호 (예: "ORD-20251120-000001")
      */
     public String generateOrderNumber() {
-        String datePart = this.date.replace("-", "");  // "20251120"
-        String sequencePart = String.format("%06d", this.sequence);
-        return String.format("ORD-%s-%s", datePart, sequencePart);
+        String datePart = this.date.replace("-", "");
+        String sequencePart = String.valueOf(1000000 + this.sequence).substring(1);
+        return new StringBuilder("ORD-")
+            .append(datePart)
+            .append("-")
+            .append(sequencePart)
+            .toString();
     }
 }

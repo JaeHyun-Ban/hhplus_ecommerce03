@@ -108,8 +108,12 @@ public class CartService {
 
         if (product.getStock() < quantity) {
             throw new IllegalStateException(
-                String.format("재고가 부족합니다. 요청: %d개, 가능: %d개",
-                    quantity, product.getStock())
+                new StringBuilder("재고가 부족합니다. 요청: ")
+                    .append(quantity)
+                    .append("개, 가능: ")
+                    .append(product.getStock())
+                    .append("개")
+                    .toString()
             );
         }
 
@@ -164,8 +168,12 @@ public class CartService {
         Product product = cartItem.getProduct();
         if (product.getStock() < quantity) {
             throw new IllegalStateException(
-                String.format("재고가 부족합니다. 요청: %d개, 가능: %d개",
-                    quantity, product.getStock())
+                new StringBuilder("재고가 부족합니다. 요청: ")
+                    .append(quantity)
+                    .append("개, 가능: ")
+                    .append(product.getStock())
+                    .append("개")
+                    .toString()
             );
         }
 

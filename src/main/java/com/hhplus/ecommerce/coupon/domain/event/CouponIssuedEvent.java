@@ -67,7 +67,17 @@ public class CouponIssuedEvent {
 
     @Override
     public String toString() {
-        return String.format("CouponIssuedEvent(couponId=%d, userId=%d, rank=%d, issuedCount=%d, occurredAt=%s)",
-                             couponId, userId, rank, issuedCount, occurredAt);
+        return new StringBuilder("CouponIssuedEvent(couponId=")
+            .append(couponId)
+            .append(", userId=")
+            .append(userId)
+            .append(", rank=")
+            .append(rank)
+            .append(", issuedCount=")
+            .append(issuedCount)
+            .append(", occurredAt=")
+            .append(occurredAt)
+            .append(")")
+            .toString();
     }
 }
