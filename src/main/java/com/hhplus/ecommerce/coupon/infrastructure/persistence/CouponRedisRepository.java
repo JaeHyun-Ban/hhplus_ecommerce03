@@ -136,27 +136,8 @@ public class CouponRedisRepository {
 
     /**
      * 쿠폰 발급 처리 (Sorted Set + Lua Script)
-     *
-     * Sorted Set 기반 선착순 쿠폰 발급:
-     * - 발급 순서를 타임스탬프로 기록
      * - Lua Script로 원자성 보장
-     * - ZADD NX로 중복 발급 자동 방지
-     *
-     * 프로세스:
-     * 1. 현재 시각 타임스탬프 생성 (밀리초)
-     * 2. Lua Script 실행 (원자적)
-     *    - 전체 발급 수량 확인
-     *    - 사용자별 발급 수량 확인 및 증가
-     *    - Sorted Set에 추가
-     *    - 수량 초과 시 자동 롤백
-     * 3. 결과 분석 및 반환
-     * 4. 성공 시 TTL 설정
-     *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
-     * @param totalQuantity 총 발급 수량
-     * @param maxIssuePerUser 1인당 최대 발급 수량
-     * @return IssueResult (성공 여부, 메시지, 발급 수량, 순위)
+     * - 발급 순서를 타임스탬프로 기록
      */
     public IssueResult issue(Long couponId, Long userId, Integer totalQuantity, Integer maxIssuePerUser) {
         String issuedKey = COUPON_ISSUED_PREFIX + couponId;
@@ -232,25 +213,12 @@ public class CouponRedisRepository {
         }
     }
 
-    /**
-     * 현재 발급된 쿠폰 수량 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @return 발급 수량 (Sorted Set 크기)
-     */
     public Long getIssuedCount(Long couponId) {
         String key = COUPON_ISSUED_PREFIX + couponId;
         Long count = redisTemplate.opsForZSet().size(key);
         return count != null ? count : 0L;
     }
 
-    /**
-     * 사용자별 발급 수량 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
-     * @return 발급 수량 (없으면 0)
-     */
     public Long getUserIssuedCount(Long couponId, Long userId) {
         String key = COUPON_USER_COUNT_PREFIX + couponId;
         Object value = redisTemplate.opsForHash().get(key, userId.toString());
@@ -268,52 +236,24 @@ public class CouponRedisRepository {
         return 0L;
     }
 
-    /**
-     * 사용자가 해당 쿠폰을 발급받았는지 확인
-     *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
-     * @return 발급 여부 (Sorted Set 멤버 존재 여부)
-     */
     public boolean hasIssued(Long couponId, Long userId) {
         String key = COUPON_ISSUED_PREFIX + couponId;
         Double score = redisTemplate.opsForZSet().score(key, userId.toString());
         return score != null;
     }
 
-    /**
-     * 사용자의 발급 순위 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
-     * @return 발급 순위 (1부터 시작, 발급받지 않았으면 null)
-     */
     public Long getUserRank(Long couponId, Long userId) {
         String key = COUPON_ISSUED_PREFIX + couponId;
         Long rank = redisTemplate.opsForZSet().rank(key, userId.toString());
         return rank != null ? rank + 1 : null;
     }
 
-    /**
-     * 사용자의 발급 시각 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @param userId 사용자 ID
-     * @return 발급 시각 타임스탬프 (밀리초, 발급받지 않았으면 null)
-     */
     public Long getUserIssueTimestamp(Long couponId, Long userId) {
         String key = COUPON_ISSUED_PREFIX + couponId;
         Double score = redisTemplate.opsForZSet().score(key, userId.toString());
         return score != null ? score.longValue() : null;
     }
 
-    /**
-     * 선착순 발급 내역 조회 (상위 N명)
-     *
-     * @param couponId 쿠폰 ID
-     * @param topN 조회할 상위 인원 수
-     * @return 발급 내역 리스트 (순위순)
-     */
     public List<IssueRecord> getTopIssuedUsers(Long couponId, int topN) {
         String key = COUPON_ISSUED_PREFIX + couponId;
 
@@ -342,12 +282,6 @@ public class CouponRedisRepository {
         return records;
     }
 
-    /**
-     * 전체 발급 내역 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @return 발급 내역 리스트 (순위순)
-     */
     public List<IssueRecord> getAllIssuedUsers(Long couponId) {
         String key = COUPON_ISSUED_PREFIX + couponId;
 
@@ -374,15 +308,6 @@ public class CouponRedisRepository {
         return records;
     }
 
-    /**
-     * 쿠폰 발급 데이터 초기화
-     *
-     * Use Case:
-     * - 쿠폰이 새로 생성되거나 재발급 시작 시
-     * - 테스트 환경에서 데이터 초기화
-     *
-     * @param couponId 쿠폰 ID
-     */
     public void initializeCoupon(Long couponId) {
         String issuedKey = COUPON_ISSUED_PREFIX + couponId;
         String userCountKey = COUPON_USER_COUNT_PREFIX + couponId;
@@ -393,11 +318,6 @@ public class CouponRedisRepository {
         log.info("쿠폰 Redis 데이터 초기화 (Sorted Set) - couponId: {}", couponId);
     }
 
-    /**
-     * TTL 설정 (키가 존재하고 TTL이 없을 때만)
-     *
-     * @param key Redis 키
-     */
     private void setTTLIfNotExists(String key) {
         Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
         if (ttl != null && ttl == -1) { // TTL이 설정되지 않은 경우
@@ -405,12 +325,6 @@ public class CouponRedisRepository {
         }
     }
 
-    /**
-     * 쿠폰 발급 통계 조회
-     *
-     * @param couponId 쿠폰 ID
-     * @return 발급 통계 정보
-     */
     public CouponIssueStats getIssueStats(Long couponId) {
         Long issuedCount = getIssuedCount(couponId);
 
@@ -432,16 +346,6 @@ public class CouponRedisRepository {
             .build();
     }
 
-    // ========== Helper Methods ==========
-
-    /**
-     * Lua Script 결과를 Integer로 파싱
-     *
-     * StringRedisTemplate 사용으로 결과가 String 또는 Long으로 반환됨
-     *
-     * @param value Lua Script 반환값
-     * @return 정수값 (파싱 실패 시 0)
-     */
     private int parseToInt(Object value) {
         if (value instanceof Number) {
             return ((Number) value).intValue();
@@ -454,14 +358,6 @@ public class CouponRedisRepository {
         }
     }
 
-    /**
-     * Lua Script 결과를 Long으로 파싱
-     *
-     * StringRedisTemplate 사용으로 결과가 String 또는 Long으로 반환됨
-     *
-     * @param value Lua Script 반환값
-     * @return Long값 (파싱 실패 시 0L)
-     */
     private Long parseToLong(Object value) {
         if (value instanceof Number) {
             return ((Number) value).longValue();
@@ -474,14 +370,6 @@ public class CouponRedisRepository {
         }
     }
 
-    /**
-     * Redis 결과를 String으로 파싱
-     *
-     * Redis에서 byte array로 반환된 값을 String으로 변환합니다.
-     *
-     * @param value Redis 반환 값
-     * @return String 값
-     */
     private String parseToString(Object value) {
         if (value == null) {
             return "";
@@ -495,11 +383,6 @@ public class CouponRedisRepository {
         return value.toString();
     }
 
-    // ========== Inner Classes ==========
-
-    /**
-     * 쿠폰 발급 결과 DTO
-     */
     @lombok.Builder
     @lombok.Getter
     public static class IssueResult {
@@ -527,26 +410,20 @@ public class CouponRedisRepository {
         }
     }
 
-    /**
-     * 발급 내역 DTO
-     */
     @lombok.Builder
     @lombok.Getter
     public static class IssueRecord {
-        private Integer rank;              // 발급 순위
-        private Long userId;               // 사용자 ID
-        private Long issuedTimestamp;      // 발급 시각 (밀리초)
+        private Integer rank;
+        private Long userId;
+        private Long issuedTimestamp;
     }
 
-    /**
-     * 쿠폰 발급 통계 DTO
-     */
     @lombok.Builder
     @lombok.Getter
     public static class CouponIssueStats {
         private Long couponId;
-        private Long issuedCount;          // 발급된 쿠폰 수 (Sorted Set 크기)
-        private Long uniqueUserCount;      // 고유 사용자 수
-        private Long totalIssueCount;      // 총 발급 횟수 (중복 포함)
+        private Long issuedCount;
+        private Long uniqueUserCount;
+        private Long totalIssueCount;
     }
 }

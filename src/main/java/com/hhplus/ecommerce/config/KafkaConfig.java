@@ -23,6 +23,18 @@ import org.springframework.kafka.config.TopicBuilder;
 @Configuration
 public class KafkaConfig {
 
+    // Kafka Topic 상수
+    public static final String TOPIC_ORDER_EVENTS = "order-events";
+    public static final String TOPIC_PAYMENT_EVENTS = "payment-events";
+    public static final String TOPIC_STOCK_EVENTS = "stock-events";
+    public static final String TOPIC_COUPON_EVENTS = "coupon-events";
+
+    // Kafka Consumer Group ID 상수
+    public static final String GROUP_COUPON_CONSUMER = "coupon-consumer-group";
+    public static final String GROUP_STOCK_CONSUMER = "stock-consumer-group";
+    public static final String GROUP_PAYMENT_CONSUMER = "payment-consumer-group";
+    public static final String GROUP_ORDER_COMPLETED_CONSUMER = "order-completed-consumer-group";
+
     /**
      * 주문 이벤트 토픽
      * - 파티션: 3개 (동시 처리 성능 향상)
@@ -30,7 +42,7 @@ public class KafkaConfig {
      */
     @Bean
     public NewTopic orderEventsTopic() {
-        return TopicBuilder.name("order-events")
+        return TopicBuilder.name(TOPIC_ORDER_EVENTS)
                 .partitions(3)
                 .replicas(1)
                 .build();
@@ -41,7 +53,7 @@ public class KafkaConfig {
      */
     @Bean
     public NewTopic paymentEventsTopic() {
-        return TopicBuilder.name("payment-events")
+        return TopicBuilder.name(TOPIC_PAYMENT_EVENTS)
                 .partitions(3)
                 .replicas(1)
                 .build();
@@ -52,7 +64,7 @@ public class KafkaConfig {
      */
     @Bean
     public NewTopic stockEventsTopic() {
-        return TopicBuilder.name("stock-events")
+        return TopicBuilder.name(TOPIC_STOCK_EVENTS)
                 .partitions(3)
                 .replicas(1)
                 .build();
@@ -63,7 +75,7 @@ public class KafkaConfig {
      */
     @Bean
     public NewTopic couponEventsTopic() {
-        return TopicBuilder.name("coupon-events")
+        return TopicBuilder.name(TOPIC_COUPON_EVENTS)
                 .partitions(3)
                 .replicas(1)
                 .build();

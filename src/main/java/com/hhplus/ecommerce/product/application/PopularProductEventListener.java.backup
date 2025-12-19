@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.util.stream.Collectors;
+
 /**
  * 인기상품 집계 이벤트 리스너
  *
@@ -146,7 +148,7 @@ public class PopularProductEventListener {
                     .productId(p.getProductId())
                     .quantity(p.getQuantity())
                     .build())
-                .toList())
+                .collect(Collectors.toList()))
             .build();
 
         // 이벤트 스토어에 저장 (이벤트 소싱)

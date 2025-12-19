@@ -1,41 +1,42 @@
-## [STEP 15-16] 반재현(e-commerce)
+## [STEP 17-18] 반재현(e-commerce)
 
 ---
-### STEP 15 Application Event
-- [x] 주문/예약 정보를 원 트랜잭션이 종료된 이후에 전송
-- [x] 주문/예약 정보를 전달하는 부가 로직에 대한 관심사를 메인 서비스에서 분리
+### STEP 17 카프카 기초 학습 및 활용
+- [x] 카프카에 대한 기본 개념 학습 문서 작성
+- [x] 실시간 주문/예약 정보를 카프카 메시지로 발행
 
 **주요 커밋:**
-- [[ff1925e](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/ff1925e)] 주문 로직을 이벤트리스너를 활용, 각 도메인별로 비동기적인 실행이되도록 변경
-- [[7129c33](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7129c33)] 각 도메인별 이벤트의 페이로드 추가
-- [[e75a845](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/e75a845)] 쿠폰발급 이벤트 비동기처리 추가
-- [[f2308c2](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f2308c2)] 각 도메인별 테스트 업데이트 및 추가
+- [[7a6a1d3](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7a6a1d3)] 카프카 설정 추가 (docker-compose, application.yml, KafkaConfig)
+- [[3bac77c](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/3bac77c)] 쿠폰발급, 주문완료, 결제처리, 재고차감 kafka Consumer 추가
+- [[352cc03](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/352cc03)] 주문 성공 후 eventPublisher를 Kafka 이벤트 발행으로 변경
+- [[3354242](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/3354242)] 쿠폰발급 eventPublisher를 kafka 이벤트로 발행
+- [[f4d4e60](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f4d4e60)] kafka JSON 역직렬화(JSON -> DTO) 추가
+- [[5efca70](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/5efca70)] 카프카 이전버전 코드 백업
 
-### STEP 16 Transaction Diagnosis
-- [x] 도메인별로 트랜잭션이 분리되었을 때 발생 가능한 문제 파악
-- [x] 트랜잭션이 분리되더라도 데이터 일관성을 보장할 수 있는 분산 트랜잭션 설계
+### STEP 18 카프카를 활용하여 비즈니스 프로세스 개선
+- [x] 카프카 특징을 활용한 쿠폰/주문 설계문서 작성
+- [x] 설계문서대로 카프카를 활용한 기능 구현
 
 **주요 커밋:**
-- [[7c823c9](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7c823c9)] 분산 트랜잭션 설계문서 추가
-- [[f441329](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f441329)] 도메인별 비동기 이벤트 실패를 대비한 이벤트 소싱 추가
-- [[fbeab8d](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/fbeab8d)] orderEntity 결제 컬럼 추가 및 결제 레포지토리 생성
-- [[31649d4](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/31649d4)] 하드코딩된 값을 상수로 대체
+- [[56c0d12](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/56c0d12)] kafka 기반 선착순 쿠폰 발급 설계 문서 생성
+- [[252954e](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/252954e), [08c03c1](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/08c03c1)] 결제도메인 분리
+- [[7a560f3](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7a560f3)] 상수는 사용하는 클래스 내부에 존재할 수 있도록 수정
 
 **구현 내용:**
-- ✅ **Saga 패턴 (Choreography)**: 비동기 이벤트 기반 분산 트랜잭션 구현
-- ✅ **이벤트 소싱**: DomainEventStore를 통한 실패 이벤트 추적 및 자동 재시도
-- ✅ **보상 트랜잭션**: 실패 시 자동 롤백으로 데이터 일관성 보장
-- ✅ **트랜잭션 분리**: `@TransactionalEventListener` + `REQUIRES_NEW`
-- ✅ **Payment 엔티티**: 결제 정보 독립 관리
-- ✅ **성능 개선**: 응답 시간 67% 단축, 처리량 4배 증가
+- ✅ **Kafka 기반 비동기 처리**: EventListener → Kafka Consumer/Producer 전환
+- ✅ **4개 Kafka 토픽**: order-events, stock-events, payment-events, coupon-events
+- ✅ **파티셔닝 전략**: couponId/orderId 기반 파티션 키로 순서 보장
+- ✅ **멱등성 보장**: Producer(enable.idempotence) + Consumer(중복 체크)
+- ✅ **재시도 & DLQ**: Exponential Backoff(100ms→500ms) + Dead Letter Queue
+- ✅ **At-Least-Once 전달**: 수동 커밋으로 메시지 유실 방지
+- ✅ **성능 개선**: 응답 시간 50% 단축(300ms→150ms), 처리량 400% 증가(1K→5K TPS)
 
 **관련 문서:**
-- 📄 [분산 트랜잭션 설계 문서](../docs/DISTRIBUTED_TRANSACTION_DESIGN.md)
-- 📄 [README.md - 분산 트랜잭션 섹션](../README.md#-분산-트랜잭션)
+- 📄 [Kafka 쿠폰 시스템 설계 문서](../docs/KAFKA_COUPON_SYSTEM_DESIGN.md)
 
 ---
 
 ### **간단 회고** (3줄 이내)
-- **잘한 점**:
-- **어려운 점**:
-- **다음 시도**:
+- **잘한 점**: 
+- **어려운 점**: 
+- **다음 시도**: 

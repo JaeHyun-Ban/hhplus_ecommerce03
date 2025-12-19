@@ -17,7 +17,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 쿠폰 API Controller
@@ -132,7 +131,7 @@ public class CouponController {
         List<Coupon> coupons = couponService.getAvailableCoupons();
         List<CouponResponse> response = coupons.stream()
             .map(CouponResponse::from)
-            .collect(Collectors.toList());
+            .toList();
 
         return ResponseEntity.ok(response);
     }
@@ -182,7 +181,7 @@ public class CouponController {
         List<UserCoupon> userCoupons = couponService.getMyCoupons(userId);
         List<UserCouponResponse> response = userCoupons.stream()
             .map(UserCouponResponse::from)
-            .collect(Collectors.toList());
+            .toList();
 
         return ResponseEntity.ok(response);
     }
@@ -209,7 +208,7 @@ public class CouponController {
         List<UserCoupon> userCoupons = couponService.getAvailableMyCoupons(userId);
         List<UserCouponResponse> response = userCoupons.stream()
             .map(UserCouponResponse::from)
-            .collect(Collectors.toList());
+            .toList();
 
         return ResponseEntity.ok(response);
     }
