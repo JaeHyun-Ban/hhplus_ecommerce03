@@ -22,7 +22,6 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.LocalDateTime;
-import java.util.stream.Collectors;
 
 /**
  * 재고 차감 이벤트 리스너
@@ -215,7 +214,7 @@ public class StockDeductionEventListener {
                     .productId(p.getProductId())
                     .quantity(p.getQuantity())
                     .build())
-                .collect(Collectors.toList()))
+                .toList())
             .failureReason(failureReason)
             .build();
 

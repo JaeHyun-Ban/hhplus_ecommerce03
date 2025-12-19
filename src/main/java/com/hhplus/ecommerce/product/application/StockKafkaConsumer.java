@@ -3,6 +3,7 @@ package com.hhplus.ecommerce.product.application;
 import com.hhplus.ecommerce.common.application.DomainEventStoreService;
 import com.hhplus.ecommerce.common.domain.DomainEventStore;
 import com.hhplus.ecommerce.common.domain.event.StockDeductionPayload;
+import com.hhplus.ecommerce.config.KafkaConfig;
 import com.hhplus.ecommerce.order.domain.Order;
 import com.hhplus.ecommerce.order.domain.event.OrderCreatedEvent;
 import com.hhplus.ecommerce.order.infrastructure.persistence.OrderRepository;
@@ -26,7 +27,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.stream.Collectors;
 
 /**
  * 재고 차감 Kafka Consumer (order-events → stock-events)
@@ -53,8 +53,8 @@ public class StockKafkaConsumer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @KafkaListener(
-        topics = "order-events",
-        groupId = "stock-consumer-group",
+        topics = KafkaConfig.TOPIC_ORDER_EVENTS,
+        groupId = KafkaConfig.GROUP_STOCK_CONSUMER,
         containerFactory = "kafkaListenerContainerFactory"
     )
     @Retryable(
@@ -110,7 +110,7 @@ public class StockKafkaConsumer {
                 .orderProducts(event.getOrderProducts())
                 .build();
 
-            kafkaTemplate.send("stock-events", event.getOrderId().toString(), balanceEvent);
+            kafkaTemplate.send(KafkaConfig.TOPIC_STOCK_EVENTS, event.getOrderId().toString(), balanceEvent);
             log.info("[Kafka] stock-events 발행 - orderId: {}", event.getOrderId());
 
             ack.acknowledge();
@@ -153,7 +153,7 @@ public class StockKafkaConsumer {
                     .productId(p.getProductId())
                     .quantity(p.getQuantity())
                     .build())
-                .collect(Collectors.toList()))
+                .toList())
             .failureReason(failureReason)
             .build();
 
