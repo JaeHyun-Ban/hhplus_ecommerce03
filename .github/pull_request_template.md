@@ -1,40 +1,32 @@
-## [STEP 17-18] 반재현(e-commerce)
+## [STEP 19-20] 반재현 - e-commerce
 
----
-### STEP 17 카프카 기초 학습 및 활용
-- [x] 카프카에 대한 기본 개념 학습 문서 작성
-- [x] 실시간 주문/예약 정보를 카프카 메시지로 발행
-
-**주요 커밋:**
-- [[7a6a1d3](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7a6a1d3)] 카프카 설정 추가 (docker-compose, application.yml, KafkaConfig)
-- [[3bac77c](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/3bac77c)] 쿠폰발급, 주문완료, 결제처리, 재고차감 kafka Consumer 추가
-- [[352cc03](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/352cc03)] 주문 성공 후 eventPublisher를 Kafka 이벤트 발행으로 변경
-- [[3354242](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/3354242)] 쿠폰발급 eventPublisher를 kafka 이벤트로 발행
-- [[f4d4e60](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f4d4e60)] kafka JSON 역직렬화(JSON -> DTO) 추가
-- [[5efca70](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/5efca70)] 카프카 이전버전 코드 백업
-
-### STEP 18 카프카를 활용하여 비즈니스 프로세스 개선
-- [x] 카프카 특징을 활용한 쿠폰/주문 설계문서 작성
-- [x] 설계문서대로 카프카를 활용한 기능 구현
+  ---
+### STEP 19 부하 테스트 스크립트 작성 및 진행
+- [x] 부하 테스트 대상 선정 및 목적, 시나리오 등의 계획을 세우고 이를 문서로 작성
+- [x] 적합한 테스트 스크립트를 작성하고 수행
 
 **주요 커밋:**
-- [[56c0d12](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/56c0d12)] kafka 기반 선착순 쿠폰 발급 설계 문서 생성
-- [[252954e](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/252954e), [08c03c1](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/08c03c1)] 결제도메인 분리
-- [[7a560f3](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/7a560f3)] 상수는 사용하는 클래스 내부에 존재할 수 있도록 수정
-
-**구현 내용:**
-- ✅ **Kafka 기반 비동기 처리**: EventListener → Kafka Consumer/Producer 전환
-- ✅ **4개 Kafka 토픽**: order-events, stock-events, payment-events, coupon-events
-- ✅ **파티셔닝 전략**: couponId/orderId 기반 파티션 키로 순서 보장
-- ✅ **멱등성 보장**: Producer(enable.idempotence) + Consumer(중복 체크)
-- ✅ **재시도 & DLQ**: Exponential Backoff(100ms→500ms) + Dead Letter Queue
-- ✅ **At-Least-Once 전달**: 수동 커밋으로 메시지 유실 방지
-- ✅ **성능 개선**: 응답 시간 50% 단축(300ms→150ms), 처리량 400% 증가(1K→5K TPS)
+- [[ca6718f](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/ca6718f)] k6기반 부하 테스트 계획서
+- [[291bbcb](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/291bbcb)] k6기반 테스트 스크립트 작성
+- [[60c4f87](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/60c4f87)] k6 실행 가이드 문서
 
 **관련 문서:**
-- 📄 [Kafka 쿠폰 시스템 설계 문서](../docs/KAFKA_COUPON_SYSTEM_DESIGN.md)
+- 📄 [부하 테스트 계획서](../k6-tests/LOAD_TEST_PLAN.md) (63KB, 477줄)
+- 📄 [테스트 결과 요약](../k6-tests/TEST_RESULTS_SUMMARY.md)
 
----
+  ---
+
+### STEP 20 부하 테스트로 인한 문제 개선 및 보고서 작성
+- [x] 테스트를 진행하며 획득한 다양한 성능 지표를 분석 및 시스템 내의 병목을 탐색 및 개선함
+- [x] 가상의 장애 대응 문서를 작성하고 제출함
+
+**주요 커밋:**
+- [[605fd00](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/605fd00)] 병목지점 탐색 및 개선 보고서
+- [[f728427](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/f728427)] Redis 캐시 설정
+- [[8eadd05](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/8eadd05)] 주문 생성 시 재고 차감 등의 후속 작업을 비동기로 처리
+- [[0cc6e51](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/0cc6e51)] 성능 최적화를 위한 파일 설정 추가
+- [[18e4433](https://github.com/JaeHyun-Ban/hhplus_ecommerce03/commit/18e4433)] README 최신화
+
 
 ### **간단 회고** (3줄 이내)
 - **잘한 점**: 
