@@ -1,0 +1,298 @@
+# ================================================
+# 성능 최적화 application.yml 설정
+# ================================================
+
+spring:
+  # ================================================
+  # 데이터베이스 설정 (HikariCP)
+  # ================================================
+  datasource:
+    hikari:
+      # 커넥션 풀 크기 설정
+      # 기본값: 10 → 50으로 증가
+      # 이유: 100 VUs 이상에서 커넥션 부족 현상 발생
+      maximum-pool-size: 50
+
+      # 최소 유휴 커넥션 수
+      # 기본값: maximum-pool-size와 동일 → 20으로 설정
+      # 이유: 평상시 부하에 맞춰 최적화
+      minimum-idle: 20
+
+      # 커넥션 획득 타임아웃 (ms)
+      # 기본값: 30000 (30초) → 5000 (5초)로 단축
+      # 이유: 빠른 실패로 사용자 경험 개선
+      connection-timeout: 5000
+
+      # 유휴 커넥션 최대 유지 시간 (ms)
+      # 기본값: 600000 (10분)
+      # 이유: 유휴 커넥션 정리로 리소스 절약
+      idle-timeout: 600000
+
+      # 커넥션 최대 생존 시간 (ms)
+      # 기본값: 1800000 (30분)
+      # 이유: MySQL의 wait_timeout(8시간)보다 짧게 설정
+      max-lifetime: 1800000
+
+      # 커넥션 누수 감지 임계값 (ms)
+      # 기본값: 0 (비활성화) → 60000 (1분)
+      # 이유: 커넥션 누수 조기 감지
+      leak-detection-threshold: 60000
+
+      # Auto Commit
+      # 기본값: true
+      # 이유: 명시적 트랜잭션 제어
+      auto-commit: true
+
+      # 커넥션 테스트 쿼리
+      # 이유: 커넥션 유효성 검증
+      connection-test-query: SELECT 1
+
+      # Pool Name
+      pool-name: HikariPool-Ecommerce
+
+  # ================================================
+  # JPA 설정
+  # ================================================
+  jpa:
+    properties:
+      hibernate:
+        # 배치 처리 크기
+        # 기본값: 1 → 50
+        # 이유: INSERT/UPDATE 배치 처리로 성능 개선
+        jdbc:
+          batch_size: 50
+          batch_versioned_data: true
+
+        # Order 최적화
+        # 이유: 배치 INSERT 시 정렬로 성능 개선
+        order_inserts: true
+        order_updates: true
+
+        # 쿼리 캐시
+        # 주의: Second Level Cache와 다름
+        query:
+          query_cache_enabled: false  # 일반적으로 비활성화 권장
+          in_clause_parameter_padding: true
+
+        # Second Level Cache (선택 사항)
+        # 주의: Redis 캐시와 중복되므로 신중히 고려
+        cache:
+          use_second_level_cache: false
+          use_query_cache: false
+
+        # Statement Logging
+        # 개발: true, 운영: false
+        show_sql: false
+        format_sql: false
+        use_sql_comments: false
+
+        # 통계
+        generate_statistics: false  # 운영에서는 false (성능 영향)
+
+  # ================================================
+  # Redis 설정
+  # ================================================
+  data:
+    redis:
+      # Lettuce Connection Pool
+      lettuce:
+        pool:
+          # 최대 활성 커넥션 수
+          # 기본값: 8 → 50
+          max-active: 50
+
+          # 최대 유휴 커넥션 수
+          # 기본값: 8 → 20
+          max-idle: 20
+
+          # 최소 유휴 커넥션 수
+          # 기본값: 0 → 10
+          min-idle: 10
+
+          # 커넥션 획득 타임아웃 (ms)
+          # 기본값: -1 (무한) → 3000 (3초)
+          max-wait: 3000
+
+      # Command Timeout (ms)
+      # 기본값: 60000 (60초) → 5000 (5초)
+      timeout: 5000
+
+  # ================================================
+  # Kafka 설정
+  # ================================================
+  kafka:
+    producer:
+      # 배치 크기 (bytes)
+      # 기본값: 16384 (16KB) → 32768 (32KB)
+      # 이유: 처리량 향상
+      batch-size: 32768
+
+      # 버퍼 메모리 (bytes)
+      # 기본값: 33554432 (32MB) → 67108864 (64MB)
+      buffer-memory: 67108864
+
+      # Linger (ms)
+      # 기본값: 0 → 10
+      # 이유: 배치 효율성 향상 (약간의 지연 허용)
+      linger-ms: 10
+
+      # Compression
+      # 기본값: none → snappy
+      # 이유: 네트워크 대역폭 절약
+      compression-type: snappy
+
+      # Acks
+      # 기본값: 1 → all
+      # 이유: 데이터 손실 방지 (신뢰성)
+      acks: all
+
+      # Retry
+      # 기본값: 0 → 3
+      retries: 3
+
+    consumer:
+      # Fetch Min Bytes
+      # 기본값: 1 → 1024
+      # 이유: 네트워크 왕복 감소
+      fetch-min-size: 1024
+
+      # Fetch Max Wait (ms)
+      # 기본값: 500
+      fetch-max-wait: 500
+
+      # Max Poll Records
+      # 기본값: 500 → 100
+      # 이유: 메시지 처리 시간 고려
+      max-poll-records: 100
+
+  # ================================================
+  # Async 설정 (TaskExecutor)
+  # ================================================
+  task:
+    execution:
+      pool:
+        # Core Pool Size
+        core-size: 20
+
+        # Max Pool Size
+        max-size: 50
+
+        # Queue Capacity
+        queue-capacity: 500
+
+      thread-name-prefix: task-exec-
+
+# ================================================
+# Actuator 설정 (모니터링)
+# ================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+  metrics:
+    enable:
+      jvm: true
+      system: true
+      http: true
+
+    export:
+      prometheus:
+        enabled: true
+
+  endpoint:
+    health:
+      show-details: always
+
+# ================================================
+# Logging 설정
+# ================================================
+logging:
+  level:
+    # Root 레벨: INFO
+    root: INFO
+
+    # 애플리케이션 레벨: DEBUG (개발), INFO (운영)
+    com.hhplus.ecommerce: INFO
+
+    # SQL 로그 (개발 환경에서만)
+    # org.hibernate.SQL: DEBUG
+    # org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+    # HikariCP 로그
+    com.zaxxer.hikari: INFO
+
+    # Kafka 로그
+    org.apache.kafka: WARN
+
+    # Redis 로그
+    io.lettuce.core: WARN
+
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+  file:
+    name: logs/ecommerce.log
+    max-size: 100MB
+    max-history: 30
+
+# ================================================
+# 커스텀 설정
+# ================================================
+app:
+  # 비동기 작업 설정
+  async:
+    core-pool-size: 20
+    max-pool-size: 50
+    queue-capacity: 500
+
+  # 캐시 설정
+  cache:
+    product-ttl: 600  # 10분 (초)
+    product-list-ttl: 300  # 5분
+    popular-products-ttl: 600  # 10분
+
+  # Rate Limiting (선택 사항)
+  rate-limit:
+    enabled: true
+    requests-per-minute: 100
+
+# ================================================
+# 프로파일별 설정
+# ================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    com.hhplus.ecommerce: DEBUG
+    org.hibernate.SQL: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    show-sql: false
+
+  datasource:
+    hikari:
+      leak-detection-threshold: 60000
+
+logging:
+  level:
+    root: WARN
+    com.hhplus.ecommerce: INFO
