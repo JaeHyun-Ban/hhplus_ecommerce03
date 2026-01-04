@@ -1,5 +1,6 @@
 package com.hhplus.ecommerce.product.application;
 
+import com.hhplus.ecommerce.config.CacheNames;
 import com.hhplus.ecommerce.product.domain.Product;
 import com.hhplus.ecommerce.product.domain.ProductStatistics;
 import com.hhplus.ecommerce.product.infrastructure.persistence.ProductRepository;
@@ -51,7 +52,6 @@ public class ProductService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedissonClient redissonClient;
 
-    private static final String CACHE_NAME_PRODUCT_INFO = "product-info";
     private static final String CACHE_KEY_POPULAR_PRODUCTS_TOP5 = "cache:popular:products:top5";
     private static final long CACHE_TTL_POPULAR_PRODUCTS_TOP5_MINUTES = 10L;
     private static final String LOCK_KEY_POPULAR_PRODUCTS_REFRESH = "lock:popular:products:refresh";
@@ -78,7 +78,7 @@ public class ProductService {
     /**
      * 상품 상세 조회 (UC-004)
      */
-    @Cacheable(value = CACHE_NAME_PRODUCT_INFO, key = "#productId")
+    @Cacheable(value = CacheNames.PRODUCT_INFO, key = "#productId")
     public Product getProduct(Long productId) {
         log.info("[UC-004] DB에서 상품 조회 - productId: {}", productId);
 
